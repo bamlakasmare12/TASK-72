@@ -15,6 +15,10 @@ log_pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 log_fail() { echo -e "${RED}[FAIL]${NC} $1"; FAILED=1; }
 log_info() { echo -e "${YELLOW}[INFO]${NC} $1"; }
 
+# Port configuration (must match docker-compose.yml)
+API_PORT=8081
+UI_PORT=3001
+
 # ============================================================
 # Phase 1: Docker build and startup
 # ============================================================
@@ -36,7 +40,7 @@ log_info "Waiting for services to become healthy..."
 RETRIES=30
 HEALTHY=0
 for i in $(seq 1 $RETRIES); do
-    if curl -sf http://localhost:8080/api/health >/dev/null 2>&1; then
+    if curl -sf http://localhost:${API_PORT}/api/health >/dev/null 2>&1; then
         HEALTHY=1
         break
     fi
@@ -57,19 +61,19 @@ fi
 # ============================================================
 log_info "Phase 2: Verifying endpoints..."
 
-if curl -sf http://localhost:8080/api/health | grep -q '"status":"ok"'; then
+if curl -sf http://localhost:${API_PORT}/api/health | grep -q '"status":"ok"'; then
     log_pass "Backend health check returned OK"
 else
     log_fail "Backend health check failed"
 fi
 
-if curl -sf http://localhost:3000/ | grep -q 'WLPR Portal'; then
+if curl -sf http://localhost:${UI_PORT}/ | grep -q 'WLPR Portal'; then
     log_pass "Frontend serves HTML with app title"
 else
     log_fail "Frontend did not return expected HTML"
 fi
 
-if curl -sf http://localhost:3000/config.js | grep -q '__WLPR_CONFIG__'; then
+if curl -sf http://localhost:${UI_PORT}/config.js | grep -q '__WLPR_CONFIG__'; then
     log_pass "Runtime config.js is served correctly"
 else
     log_fail "Runtime config.js not found or invalid"
@@ -81,7 +85,7 @@ fi
 log_info "Phase 3: Registration and API smoke tests..."
 
 # Register admin user (role selected at registration)
-REG_RESP=$(curl -sf -X POST http://localhost:8080/api/auth/register \
+REG_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/register \
     -H "Content-Type: application/json" \
     -d '{"username":"testadmin","email":"testadmin@test.local","password":"TestAdmin@2024!","display_name":"Test Administrator","role":"system_admin"}')
 
@@ -92,7 +96,7 @@ else
 fi
 
 # Login as the registered admin
-LOGIN_RESP=$(curl -sf -X POST http://localhost:8080/api/auth/login \
+LOGIN_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/login \
     -H "Content-Type: application/json" \
     -d '{"username":"testadmin","password":"TestAdmin@2024!"}')
 
@@ -106,21 +110,21 @@ fi
 
 if [ -n "$TOKEN" ]; then
     # Test authenticated endpoint
-    if curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/auth/me | grep -q '"user_id"'; then
+    if curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:${API_PORT}/api/auth/me | grep -q '"user_id"'; then
         log_pass "GET /api/auth/me returns user data"
     else
         log_fail "GET /api/auth/me failed"
     fi
 
     # Test search (empty results expected — no seeded content)
-    if curl -sf -H "Authorization: Bearer $TOKEN" "http://localhost:8080/api/search?q=test" | grep -q '"results"'; then
+    if curl -sf -H "Authorization: Bearer $TOKEN" "http://localhost:${API_PORT}/api/search?q=test" | grep -q '"results"'; then
         log_pass "GET /api/search returns valid response"
     else
         log_fail "GET /api/search failed"
     fi
 
     # Test learning paths (empty expected — no seeded data)
-    PATHS_RESP=$(curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/learning/paths)
+    PATHS_RESP=$(curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:${API_PORT}/api/learning/paths)
     if [ "$PATHS_RESP" = "null" ] || echo "$PATHS_RESP" | grep -q '\[\]'; then
         log_pass "GET /api/learning/paths returns empty (no seeded data)"
     else
@@ -128,7 +132,7 @@ if [ -n "$TOKEN" ]; then
     fi
 
     # Register a second user with learner role
-    REG2_RESP=$(curl -sf -X POST http://localhost:8080/api/auth/register \
+    REG2_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/register \
         -H "Content-Type: application/json" \
         -d '{"username":"testlearner","email":"learner@test.local","password":"Learner@2024!","display_name":"Test Learner","role":"learner"}')
 
@@ -139,7 +143,7 @@ if [ -n "$TOKEN" ]; then
     fi
 
     # Login as learner and verify RBAC invisibility (404 not 403)
-    LEARNER_RESP=$(curl -sf -X POST http://localhost:8080/api/auth/login \
+    LEARNER_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/login \
         -H "Content-Type: application/json" \
         -d '{"username":"testlearner","password":"Learner@2024!"}')
     LEARNER_TOKEN=$(echo "$LEARNER_RESP" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -147,7 +151,7 @@ if [ -n "$TOKEN" ]; then
     if [ -n "$LEARNER_TOKEN" ]; then
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $LEARNER_TOKEN" \
-            http://localhost:8080/api/procurement/settlements)
+            http://localhost:${API_PORT}/api/procurement/settlements)
         if [ "$HTTP_CODE" = "404" ]; then
             log_pass "RBAC: Learner gets 404 for /settlements (feature invisible)"
         else
@@ -157,7 +161,7 @@ if [ -n "$TOKEN" ]; then
         # Learner should be able to access search
         HTTP_CODE2=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $LEARNER_TOKEN" \
-            "http://localhost:8080/api/search?q=test")
+            "http://localhost:${API_PORT}/api/search?q=test")
         if [ "$HTTP_CODE2" = "200" ]; then
             log_pass "Learner can access /search (200)"
         else
@@ -199,7 +203,7 @@ if docker run --rm \
     -v "$SCRIPT_DIR/backend:/src:ro" \
     golang:1.22-alpine sh -c "
         cp -r /src /app && cd /app && go mod tidy &&
-        go test -v -count=1 -timeout=120s ./pkg/crypto/ ./pkg/pinyin/ ./internal/services/ ./internal/handlers/ 2>&1
+        go test -v -count=1 -timeout=120s ./pkg/... ./internal/services/ ./internal/handlers/ ./internal/middleware/ 2>&1
     " ; then
     log_pass "Backend unit tests passed"
 else
@@ -225,7 +229,7 @@ fi
 # ============================================================
 # Phase 7: Cleanup
 # ============================================================
-log_info "Phase 6: Stopping and cleaning up Docker containers..."
+log_info "Phase 7: Stopping and cleaning up Docker containers..."
 docker compose down -v --remove-orphans
 
 # ============================================================
