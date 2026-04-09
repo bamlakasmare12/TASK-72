@@ -107,25 +107,16 @@ func TestRegister_SystemAdminRoleBlocked(t *testing.T) {
 	}
 }
 
-// TestRegister_SystemAdminSelfAssign_Rejected verifies that a request to self-register
-// with the system_admin role is rejected with 400.
+// TestRegister_SystemAdminSelfAssign_Rejected verifies that "system_admin" is NOT
+// in the self-registration role set. The handler enforces this after the first-user
+// bootstrap check, so we validate at the model level directly.
 func TestRegister_SystemAdminSelfAssign_Rejected(t *testing.T) {
-	e := echo.New()
-	h := &AuthHandler{}
-	e.POST("/api/auth/register", h.Register)
-
-	body := `{"username":"hacker","email":"h@e.com","password":"longpassword123","display_name":"Hacker","role":"system_admin"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	// The handler will call CountUsers, which requires userRepo.
-	// With nil userRepo, it will fail at CountUsers (500), but the important thing
-	// is that if CountUsers returned >0, the system_admin role would be rejected.
-	// We test the model-level validation directly instead.
 	if models.ValidRoles()["system_admin"] {
 		t.Fatal("SECURITY: system_admin must not be self-assignable via registration")
+	}
+	// system_admin must be in AllRoles (for admin assignment)
+	if !models.AllRoles()["system_admin"] {
+		t.Fatal("system_admin must be in AllRoles for admin assignment")
 	}
 }
 

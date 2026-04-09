@@ -150,6 +150,16 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	if len(req.Password) < 8 {
 		return echo.NewHTTPError(http.StatusBadRequest, "password must be at least 8 characters")
 	}
+	// Validate role field early (before any DB calls).
+	// Role must be present and must be recognized (either self-reg or admin role).
+	// The first user's role is overridden to system_admin regardless.
+	if strings.TrimSpace(req.Role) == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "role is required")
+	}
+	if !models.AllRoles()[req.Role] {
+		return echo.NewHTTPError(http.StatusBadRequest,
+			"invalid role; choose one of: learner, procurement_specialist, approver, finance_analyst, content_moderator")
+	}
 
 	ctx := c.Request().Context()
 
@@ -166,10 +176,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		// First user bootstrap: ignore the requested role and assign system_admin
 		assignedRole = "system_admin"
 	} else {
-		// Subsequent users: validate role from the safe self-registration set
-		if strings.TrimSpace(req.Role) == "" {
-			return echo.NewHTTPError(http.StatusBadRequest, "role is required")
-		}
+		// Subsequent users: must use a self-registration role (no system_admin)
 		if !models.ValidRoles()[req.Role] {
 			return echo.NewHTTPError(http.StatusBadRequest,
 				"invalid role; choose one of: learner, procurement_specialist, approver, finance_analyst, content_moderator")

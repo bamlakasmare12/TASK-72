@@ -154,7 +154,7 @@ func main() {
 	e.Use(echomw.Recover())
 	e.Use(middleware.RequestLogger())
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:3001"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Authorization", "Content-Type", "X-App-Version"},
 		ExposeHeaders:    []string{"X-App-Deprecated", "X-Min-Version"},

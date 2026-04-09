@@ -143,23 +143,25 @@ func (r *SearchRepository) SearchResources(ctx context.Context, req models.Searc
 	whereClause := strings.Join(conditions, " AND ")
 
 	// ---- Sorting ----
+	// NOTE: orderClause is used in the outer SELECT from the CTE (alias-free),
+	// so column references must NOT use a table prefix.
 	var orderClause string
 	switch req.SortBy {
 	case "popularity":
-		orderClause = "r.popularity_score DESC, r.view_count DESC"
+		orderClause = "popularity_score DESC, view_count DESC"
 	case "recent":
-		orderClause = "r.published_at DESC NULLS LAST"
+		orderClause = "published_at DESC NULLS LAST"
 	case "relevance":
 		if hasQuery {
-			orderClause = "search_rank DESC, trgm_sim DESC, r.popularity_score DESC"
+			orderClause = "search_rank DESC, trgm_sim DESC, popularity_score DESC"
 		} else {
-			orderClause = "r.popularity_score DESC"
+			orderClause = "popularity_score DESC"
 		}
 	default:
 		if hasQuery {
-			orderClause = "search_rank DESC, trgm_sim DESC, r.popularity_score DESC"
+			orderClause = "search_rank DESC, trgm_sim DESC, popularity_score DESC"
 		} else {
-			orderClause = "r.published_at DESC NULLS LAST"
+			orderClause = "published_at DESC NULLS LAST"
 		}
 	}
 

@@ -227,21 +227,75 @@ func TestIntegration_TaxonomyReviewQueue_TagWorkflow(t *testing.T) {
 	})
 
 	t.Run("AuditTrail_RecordsAllActions", func(t *testing.T) {
-		// Verify the full audit trail via GetReviewQueueAll
+		// Create a tag, approve it, then verify the full lifecycle is in the audit trail
+		req := models.CreateTagRequest{
+			Name:    fmt.Sprintf("AuditTrail Tag %d", os.Getpid()),
+			TagType: "skill",
+		}
+		tag, err := repo.CreateTag(ctx, req, createdBy)
+		if err != nil {
+			t.Fatalf("CreateTag failed: %v", err)
+		}
+		defer db.Exec(ctx, "DELETE FROM taxonomy_tags WHERE id = $1", tag.ID)
+		defer db.Exec(ctx, "DELETE FROM taxonomy_review_queue WHERE entity_type = 'tag' AND entity_id = $1", tag.ID)
+		defer db.Exec(ctx, "DELETE FROM audit_log WHERE entity_type = 'tag' AND entity_id = $1", tag.ID)
+
+		queue, _ := repo.GetReviewQueue(ctx)
+		var reviewItemID int
+		for _, item := range queue {
+			if item.EntityType == "tag" && item.EntityID == tag.ID {
+				reviewItemID = item.ID
+				break
+			}
+		}
+		if reviewItemID == 0 {
+			t.Fatal("review queue entry not found")
+		}
+
+		// Approve it
+		err = repo.ApproveReviewItem(ctx, reviewItemID, reviewerID, "Audit trail test")
+		if err != nil {
+			t.Fatalf("ApproveReviewItem failed: %v", err)
+		}
+
+		// Verify the audit trail has both submission and approval entries
+		var submissionCount, approvalCount int
+		db.QueryRow(ctx, `
+			SELECT COUNT(*) FROM audit_log
+			WHERE entity_type = 'tag' AND entity_id = $1 AND action = 'taxonomy_tag_submitted'
+		`, tag.ID).Scan(&submissionCount)
+		db.QueryRow(ctx, `
+			SELECT COUNT(*) FROM audit_log
+			WHERE entity_type = 'tag' AND entity_id = $1 AND action = 'taxonomy_review_approved'
+		`, tag.ID).Scan(&approvalCount)
+
+		if submissionCount == 0 {
+			t.Error("audit trail missing submission entry")
+		}
+		if approvalCount == 0 {
+			t.Error("audit trail missing approval entry")
+		}
+
+		// Verify GetReviewQueueAll returns the approved item
 		allItems, err := repo.GetReviewQueueAll(ctx)
 		if err != nil {
 			t.Fatalf("GetReviewQueueAll failed: %v", err)
 		}
-		if len(allItems) == 0 {
-			t.Error("audit trail should contain review queue items from prior tests")
-		}
-
-		// Verify mix of statuses in the trail
-		statusCounts := make(map[string]int)
+		found := false
 		for _, item := range allItems {
-			statusCounts[item.Status]++
+			if item.EntityType == "tag" && item.EntityID == tag.ID && item.Status == "approved" {
+				found = true
+				if item.ReviewedBy == nil || *item.ReviewedBy != reviewerID {
+					t.Error("approved item should have reviewer_id set")
+				}
+				if item.DecisionNotes == nil || *item.DecisionNotes != "Audit trail test" {
+					t.Error("approved item should have decision_notes set")
+				}
+			}
 		}
-		t.Logf("Audit trail status counts: %v", statusCounts)
+		if !found {
+			t.Error("approved item not found in GetReviewQueueAll audit trail")
+		}
 	})
 }
 
