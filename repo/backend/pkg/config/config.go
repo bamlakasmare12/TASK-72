@@ -82,9 +82,13 @@ func parse(data []byte) (*AppConfig, error) {
 	// Remove trailing semicolon if present
 	jsonStr = strings.TrimRight(strings.TrimSpace(jsonStr), ";")
 
-	// Remove single-line JS comments (// ...)
-	commentRe := regexp.MustCompile(`//[^\n]*`)
-	jsonStr = commentRe.ReplaceAllString(jsonStr, "")
+	// Remove single-line JS comments (// ...) but not inside quoted strings.
+	// Process line by line: only strip comments outside of string literals.
+	lines := strings.Split(jsonStr, "\n")
+	for i, line := range lines {
+		lines[i] = stripLineComment(line)
+	}
+	jsonStr = strings.Join(lines, "\n")
 
 	// Remove trailing commas before } or ] (invalid JSON but valid JS)
 	trailingCommaRe := regexp.MustCompile(`,\s*([}\]])`)
@@ -96,4 +100,29 @@ func parse(data []byte) (*AppConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// stripLineComment removes a // comment from a line, but only if the //
+// is not inside a quoted string. This avoids mangling URLs like postgres://...
+func stripLineComment(line string) string {
+	inString := false
+	escaped := false
+	for i, ch := range line {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString && ch == '/' && i+1 < len(line) && line[i+1] == '/' {
+			return line[:i]
+		}
+	}
+	return line
 }

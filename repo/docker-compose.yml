@@ -1,15 +1,15 @@
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: wlpr-db
     environment:
       POSTGRES_DB: wlpr_portal
       POSTGRES_USER: wlpr
       POSTGRES_PASSWORD: wlpr_secret
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - wlpr_pgdata:/var/lib/postgresql/data
       - ./backend/init.sql:/docker-entrypoint-initdb.d/01-init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wlpr -d wlpr_portal"]
@@ -23,7 +23,7 @@ services:
     build: ./backend
     container_name: wlpr-backend
     ports:
-      - "8080:8080"
+      - "8081:8080"
     volumes:
       - ./config/config.js:/config/config.js:ro
     depends_on:
@@ -41,7 +41,7 @@ services:
     build: ./frontend
     container_name: wlpr-frontend
     ports:
-      - "3000:80"
+      - "3001:80"
     volumes:
       - ./config/config.js:/usr/share/nginx/html/config.js:ro
     depends_on:
@@ -50,4 +50,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  pgdata:
+  wlpr_pgdata:

@@ -10,15 +10,15 @@ func TestParse_ValidConfigJS(t *testing.T) {
 	input := []byte(`
 // Runtime configuration
 window.__WLPR_CONFIG__ = {
-  API_BASE_URL: "/api",
-  APP_VERSION: "1.0.0",
-  DATABASE_URL: "postgres://wlpr:wlpr_secret@db:5432/wlpr_portal?sslmode=disable",
-  JWT_SECRET: "test-secret-at-least-32-characters-long",
-  AES_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  PORT: "8080",
-  POSTGRES_DB: "wlpr_portal",
-  POSTGRES_USER: "wlpr",
-  POSTGRES_PASSWORD: "wlpr_secret"
+  "API_BASE_URL": "/api",
+  "APP_VERSION": "1.0.0",
+  "DATABASE_URL": "postgres://wlpr:wlpr_secret@db:5432/wlpr_portal?sslmode=disable",
+  "JWT_SECRET": "test-secret-at-least-32-characters-long",
+  "AES_ENCRYPTION_KEY": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "PORT": "8080",
+  "POSTGRES_DB": "wlpr_portal",
+  "POSTGRES_USER": "wlpr",
+  "POSTGRES_PASSWORD": "wlpr_secret"
 };
 `)
 
@@ -58,10 +58,10 @@ func TestParse_WithComments(t *testing.T) {
 // This is a comment
 window.__WLPR_CONFIG__ = {
   // Backend settings
-  DATABASE_URL: "postgres://localhost/test", // inline comment
-  JWT_SECRET: "my-secret-key-at-least-32-characters",
-  AES_ENCRYPTION_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  PORT: "9090"
+  "DATABASE_URL": "postgres://localhost/test",
+  "JWT_SECRET": "my-secret-key-at-least-32-characters",
+  "AES_ENCRYPTION_KEY": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "PORT": "9090"
 };
 `)
 
@@ -81,10 +81,10 @@ window.__WLPR_CONFIG__ = {
 func TestParse_WithTrailingCommas(t *testing.T) {
 	input := []byte(`
 window.__WLPR_CONFIG__ = {
-  DATABASE_URL: "postgres://localhost/test",
-  JWT_SECRET: "my-secret-key-at-least-32-characters",
-  AES_ENCRYPTION_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  PORT: "8080",
+  "DATABASE_URL": "postgres://localhost/test",
+  "JWT_SECRET": "my-secret-key-at-least-32-characters",
+  "AES_ENCRYPTION_KEY": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "PORT": "8080",
 };
 `)
 
@@ -121,10 +121,10 @@ func TestLoadFrom_FileExists(t *testing.T) {
 	path := filepath.Join(tmpDir, "config.js")
 	os.WriteFile(path, []byte(`
 window.__WLPR_CONFIG__ = {
-  DATABASE_URL: "postgres://test",
-  JWT_SECRET: "test-secret-at-least-32-characters-long",
-  AES_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  PORT: "3000"
+  "DATABASE_URL": "postgres://test",
+  "JWT_SECRET": "test-secret-at-least-32-characters-long",
+  "AES_ENCRYPTION_KEY": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "PORT": "3000"
 };
 `), 0644)
 
@@ -145,16 +145,15 @@ func TestLoadFrom_FileNotFound(t *testing.T) {
 }
 
 func TestParse_NestedObjectsIgnored(t *testing.T) {
-	// The parser should handle nested objects (like FEATURE_DEFAULTS) gracefully
 	input := []byte(`
 window.__WLPR_CONFIG__ = {
-  DATABASE_URL: "postgres://localhost/test",
-  JWT_SECRET: "my-secret-key-at-least-32-characters",
-  AES_ENCRYPTION_KEY: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  PORT: "8080",
-  FEATURE_DEFAULTS: {
-    pinyin_search: true,
-    synonym_search: true
+  "DATABASE_URL": "postgres://localhost/test",
+  "JWT_SECRET": "my-secret-key-at-least-32-characters",
+  "AES_ENCRYPTION_KEY": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "PORT": "8080",
+  "FEATURE_DEFAULTS": {
+    "pinyin_search": true,
+    "synonym_search": true
   }
 };
 `)
