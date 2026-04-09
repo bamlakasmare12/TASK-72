@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: wlpr-db
+    environment:
+      POSTGRES_DB: wlpr_portal
+      POSTGRES_USER: wlpr
+      POSTGRES_PASSWORD: wlpr_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wlpr -d wlpr_portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    container_name: wlpr-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/config.js:/config/config.js:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: wlpr-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./config/config.js:/usr/share/nginx/html/config.js:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

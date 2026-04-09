@@ -1,0 +1,38 @@
+# Local temp/artifacts
+
+# Node / frontend
+node_modules/
+repo/frontend/node_modules/
+repo/frontend/dist/
+repo/frontend/.vite/
+*.tsbuildinfo
+
+# Go / backend
+bin/
+dist/
+coverage.out
+*.test
+repo/backend/bin/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Tooling caches
+.cache/
+.npm/
