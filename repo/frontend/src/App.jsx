@@ -12,6 +12,7 @@ import LearningDashboard from './pages/LearningDashboard';
 import DisputeQueue from './pages/DisputeQueue';
 import Reconciliation from './pages/Reconciliation';
 import Register from './pages/Register';
+import ResourceDetail from './pages/ResourceDetail';
 
 function AuthenticatedLayout({ children }) {
   return (
@@ -145,6 +146,19 @@ export default function App() {
             <ProtectedRoute requiredRoles={['system_admin']}>
               <AuthenticatedLayout>
                 <AdminConfig />
+              </AuthenticatedLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/resources/:id"
+          element={
+            <ProtectedRoute
+              requiredRoles={['learner', 'content_moderator', 'system_admin']}
+            >
+              <AuthenticatedLayout>
+                <ResourceDetail />
               </AuthenticatedLayout>
             </ProtectedRoute>
           }

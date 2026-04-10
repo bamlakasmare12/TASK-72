@@ -63,11 +63,11 @@ func LoadFrom(path string) (*AppConfig, error) {
 		}
 	}
 
-	return parse(data)
+	return Parse(data)
 }
 
-// parse extracts the JSON object from the config.js content.
-func parse(data []byte) (*AppConfig, error) {
+// Parse extracts the JSON object from the config.js content.
+func Parse(data []byte) (*AppConfig, error) {
 	content := string(data)
 
 	// Extract the object between the first { and the last }

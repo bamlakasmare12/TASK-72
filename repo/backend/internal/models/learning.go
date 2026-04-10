@@ -71,6 +71,24 @@ type PathItemProgress struct {
 	Progress *UserProgress `json:"progress,omitempty"`
 }
 
+type CreateLearningPathRequest struct {
+	Title           string   `json:"title" validate:"required"`
+	Description     *string  `json:"description,omitempty"`
+	CategoryID      *int     `json:"category_id,omitempty"`
+	TargetJobFamily *string  `json:"target_job_family,omitempty"`
+	RequiredCount   int      `json:"required_count"`
+	ElectiveMin     int      `json:"elective_min"`
+	EstimatedHours  *float64 `json:"estimated_hours,omitempty"`
+	Difficulty      *string  `json:"difficulty,omitempty"`
+}
+
+type AddPathItemRequest struct {
+	PathID     int    `json:"path_id" validate:"required"`
+	ResourceID int    `json:"resource_id" validate:"required"`
+	ItemType   string `json:"item_type" validate:"required"` // required, elective
+	SortOrder  int    `json:"sort_order"`
+}
+
 type UpdateProgressRequest struct {
 	ResourceID   int    `json:"resource_id" validate:"required"`
 	PathID       *int   `json:"path_id,omitempty"`

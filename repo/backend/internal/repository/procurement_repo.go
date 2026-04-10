@@ -692,3 +692,57 @@ func (r *ProcurementRepository) TransitionDispute(ctx context.Context, id int, n
 	_, err := r.db.Exec(ctx, query, args...)
 	return err
 }
+
+// CreateVendor inserts a new vendor.
+func (r *ProcurementRepository) CreateVendor(ctx context.Context, v models.Vendor) (*models.Vendor, error) {
+	var id int
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO vendors (name, code, contact_email, contact_phone, address, is_active)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		v.Name, v.Code, v.ContactEmail, v.ContactPhone, v.Address, true,
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("insert vendor: %w", err)
+	}
+	v.ID = id
+	v.IsActive = true
+	return &v, nil
+}
+
+// CreateOrder inserts a new procurement order.
+func (r *ProcurementRepository) CreateOrder(ctx context.Context, o models.ProcurementOrder, submittedBy int) (*models.ProcurementOrder, error) {
+	var id int
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO procurement_orders (order_number, vendor_id, status, department, cost_center,
+			total_amount, currency, description, submitted_by)
+		VALUES ($1, $2, 'submitted', $3, $4, $5, $6, $7, $8)
+		RETURNING id`,
+		o.OrderNumber, o.VendorID, o.Department, o.CostCenter,
+		o.TotalAmount, o.Currency, o.Description, submittedBy,
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("insert order: %w", err)
+	}
+	o.ID = id
+	o.Status = "submitted"
+	return &o, nil
+}
+
+// CreateInvoice inserts a new invoice.
+func (r *ProcurementRepository) CreateInvoice(ctx context.Context, inv models.Invoice) (*models.Invoice, error) {
+	var id int
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO invoices (invoice_number, vendor_id, status, invoice_amount, currency,
+			invoice_date, due_date, notes)
+		VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7)
+		RETURNING id`,
+		inv.InvoiceNumber, inv.VendorID, inv.InvoiceAmount, inv.Currency,
+		inv.InvoiceDate, inv.DueDate, inv.Notes,
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("insert invoice: %w", err)
+	}
+	inv.ID = id
+	inv.Status = "pending"
+	return &inv, nil
+}

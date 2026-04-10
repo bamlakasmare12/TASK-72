@@ -24,6 +24,13 @@ type RecommendationWorker struct {
 	maxCatPct    float64 // e.g., 0.40
 }
 
+// NewRecommendationWorkerWithPct creates a RecommendationWorker with a custom
+// category-diversity cap. Intended for unit tests that need to exercise the
+// diversity/dedup logic with a controlled maxCatPct value.
+func NewRecommendationWorkerWithPct(maxCatPct float64) *RecommendationWorker {
+	return &RecommendationWorker{maxCatPct: maxCatPct}
+}
+
 func NewRecommendationWorker(learningRepo *repository.LearningRepository, searchRepo *repository.SearchRepository, configSvc *ConfigService) *RecommendationWorker {
 	return &RecommendationWorker{
 		learningRepo: learningRepo,
@@ -87,10 +94,10 @@ func (w *RecommendationWorker) run(ctx context.Context) {
 		recs := w.computeForUser(ctx, userID, userVectors, allResources)
 
 		// Deduplicate near-duplicate resources by content_hash
-		recs = w.deduplicateByContentHash(recs, resHashMap)
+		recs = w.DeduplicateByContentHash(recs, resHashMap)
 
 		// Apply diversity control
-		recs = w.applyDiversityControl(recs)
+		recs = w.ApplyDiversityControl(recs)
 
 		// Write recommendations
 		for _, rec := range recs {
@@ -331,9 +338,9 @@ func (w *RecommendationWorker) collaborativeFilter(userID int,
 	return scored
 }
 
-// deduplicateByContentHash removes near-duplicate resources from the recommendation list.
+// DeduplicateByContentHash removes near-duplicate resources from the recommendation list.
 // Within each content_hash group, only the highest-scored resource is kept.
-func (w *RecommendationWorker) deduplicateByContentHash(recs []models.Recommendation, hashMap map[int]string) []models.Recommendation {
+func (w *RecommendationWorker) DeduplicateByContentHash(recs []models.Recommendation, hashMap map[int]string) []models.Recommendation {
 	seenHashes := make(map[string]bool)
 	var deduped []models.Recommendation
 	for _, rec := range recs {
@@ -349,11 +356,11 @@ func (w *RecommendationWorker) deduplicateByContentHash(recs []models.Recommenda
 	return deduped
 }
 
-// applyDiversityControl ensures no more than maxCatPct of the final recommendation
+// ApplyDiversityControl ensures no more than maxCatPct of the final recommendation
 // set comes from a single category. It iterates through the sorted list, skips items
 // that would exceed the category quota, and re-checks the quota when backfilling
 // from deferred items to guarantee the cap is never exceeded.
-func (w *RecommendationWorker) applyDiversityControl(recs []models.Recommendation) []models.Recommendation {
+func (w *RecommendationWorker) ApplyDiversityControl(recs []models.Recommendation) []models.Recommendation {
 	if len(recs) == 0 {
 		return recs
 	}

@@ -64,12 +64,12 @@ try {
 
 Log-Info "Phase 4: Integration tests..."
 $net = (docker network ls --format '{{.Name}}' | Select-String 'repo' | Select-Object -First 1).ToString().Trim()
-docker run --rm --network=$net -e "TEST_DATABASE_URL=postgres://wlpr:wlpr_secret@db:5432/wlpr_portal?sslmode=disable" -v "${scriptDir}/backend:/src:ro" -v "${scriptDir}/config/config.js:/config/config.js:ro" golang:1.22-alpine sh -c "cp -r /src /app && cd /app && go mod tidy && go test -v -tags=integration -count=1 -timeout=120s ./internal/repository/ 2>&1"
+docker run --rm --network=$net -e "TEST_DATABASE_URL=postgres://wlpr:wlpr_secret@db:5432/wlpr_portal?sslmode=disable" -v "${scriptDir}:/src:ro" golang:1.22-alpine sh -c "cp -r /src /app && cd /app && go work sync && go test -v -tags=integration -count=1 -timeout=120s ./tests/e2e/backend/... 2>&1"
 if ($LASTEXITCODE -eq 0) { Log-Pass "Integration tests passed" } else { Log-Fail "Integration tests failed" }
 
 Log-Info "Phase 5: Unit tests..."
-docker run --rm -v "${scriptDir}/backend:/src:ro" golang:1.22-alpine sh -c "cp -r /src /app && cd /app && go mod tidy && go test -v -count=1 -timeout=120s ./pkg/... ./internal/services/ ./internal/handlers/ ./internal/middleware/ 2>&1"
-if ($LASTEXITCODE -eq 0) { Log-Pass "Unit tests passed" } else { Log-Fail "Unit tests failed" }
+docker run --rm -v "${scriptDir}:/src:ro" golang:1.22-alpine sh -c "cp -r /src /app && cd /app && go work sync && go test -v -count=1 -timeout=120s ./tests/unit/backend/... ./tests/api/backend/... 2>&1"
+if ($LASTEXITCODE -eq 0) { Log-Pass "Backend unit and API tests passed" } else { Log-Fail "Backend unit and API tests failed" }
 
 Log-Info "Phase 6: Frontend tests..."
 docker run --rm -v "${scriptDir}/frontend:/src:ro" node:20-alpine sh -c "cp -r /src /app && cd /app && npm install --legacy-peer-deps 2>&1 | tail -1 && npx vitest run 2>&1"

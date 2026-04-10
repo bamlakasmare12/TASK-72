@@ -351,6 +351,34 @@ type CreateLedgerEntryRequest struct {
 	Description   *string `json:"description,omitempty"`
 }
 
+type CreateVendorRequest struct {
+	Name         string  `json:"name" validate:"required"`
+	Code         string  `json:"code" validate:"required"`
+	ContactEmail *string `json:"contact_email,omitempty"`
+	ContactPhone *string `json:"contact_phone,omitempty"`
+	Address      *string `json:"address,omitempty"`
+}
+
+type CreateOrderRequest struct {
+	OrderNumber string  `json:"order_number" validate:"required"`
+	VendorID    int     `json:"vendor_id" validate:"required"`
+	Department  *string `json:"department,omitempty"`
+	CostCenter  *string `json:"cost_center,omitempty"`
+	TotalAmount float64 `json:"total_amount" validate:"required"`
+	Currency    string  `json:"currency,omitempty"`
+	Description *string `json:"description,omitempty"`
+}
+
+type CreateInvoiceRequest struct {
+	InvoiceNumber string  `json:"invoice_number" validate:"required"`
+	VendorID      int     `json:"vendor_id" validate:"required"`
+	InvoiceAmount float64 `json:"invoice_amount" validate:"required"`
+	Currency      string  `json:"currency,omitempty"`
+	InvoiceDate   string  `json:"invoice_date" validate:"required"`
+	DueDate       *string `json:"due_date,omitempty"`
+	Notes         *string `json:"notes,omitempty"`
+}
+
 type CreateSettlementRequest struct {
 	VendorID    int     `json:"vendor_id" validate:"required"`
 	ARTotal     float64 `json:"ar_total"`

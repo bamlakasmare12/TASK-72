@@ -409,6 +409,96 @@ func (h *ProcurementHandler) CreateSettlement(c echo.Context) error {
 	return c.JSON(http.StatusCreated, settlement)
 }
 
+// ---- Admin: Create Vendors, Orders, Invoices ----
+
+// POST /api/admin/vendors
+func (h *ProcurementHandler) CreateVendor(c echo.Context) error {
+	var req models.CreateVendorRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.Name == "" || req.Code == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "name and code are required")
+	}
+
+	v := models.Vendor{
+		Name:         req.Name,
+		Code:         req.Code,
+		ContactEmail: req.ContactEmail,
+		ContactPhone: req.ContactPhone,
+		Address:      req.Address,
+	}
+	created, err := h.procRepo.CreateVendor(c.Request().Context(), v)
+	if err != nil {
+		log.Printf("[procurement] create vendor error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create vendor")
+	}
+	return c.JSON(http.StatusCreated, created)
+}
+
+// POST /api/admin/orders
+func (h *ProcurementHandler) CreateOrder(c echo.Context) error {
+	var req models.CreateOrderRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.OrderNumber == "" || req.VendorID == 0 || req.TotalAmount <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "order_number, vendor_id, and total_amount are required")
+	}
+
+	currency := req.Currency
+	if currency == "" {
+		currency = "USD"
+	}
+	userID := c.Get("user_id").(int)
+	o := models.ProcurementOrder{
+		OrderNumber: req.OrderNumber,
+		VendorID:    req.VendorID,
+		Department:  req.Department,
+		CostCenter:  req.CostCenter,
+		TotalAmount: req.TotalAmount,
+		Currency:    currency,
+		Description: req.Description,
+	}
+	created, err := h.procRepo.CreateOrder(c.Request().Context(), o, userID)
+	if err != nil {
+		log.Printf("[procurement] create order error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create order")
+	}
+	return c.JSON(http.StatusCreated, created)
+}
+
+// POST /api/admin/invoices
+func (h *ProcurementHandler) CreateInvoice(c echo.Context) error {
+	var req models.CreateInvoiceRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.InvoiceNumber == "" || req.VendorID == 0 || req.InvoiceAmount <= 0 || req.InvoiceDate == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "invoice_number, vendor_id, invoice_amount, and invoice_date are required")
+	}
+
+	currency := req.Currency
+	if currency == "" {
+		currency = "USD"
+	}
+	inv := models.Invoice{
+		InvoiceNumber: req.InvoiceNumber,
+		VendorID:      req.VendorID,
+		InvoiceAmount: req.InvoiceAmount,
+		Currency:      currency,
+		InvoiceDate:   req.InvoiceDate,
+		DueDate:       req.DueDate,
+		Notes:         req.Notes,
+	}
+	created, err := h.procRepo.CreateInvoice(c.Request().Context(), inv)
+	if err != nil {
+		log.Printf("[procurement] create invoice error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create invoice")
+	}
+	return c.JSON(http.StatusCreated, created)
+}
+
 // ---- Reviews ----
 
 // POST /api/procurement/reviews

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import client from '../api/client';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuthStore } from '../store/authStore';
 
 const DISPUTE_STATUS_COLORS = {
   created: 'bg-gray-100 text-gray-700',
@@ -20,6 +21,12 @@ const REVIEW_STATUS_ICONS = {
 };
 
 export default function DisputeQueue() {
+  const { hasAnyRole } = useAuthStore();
+  // Only procurement_specialist and system_admin can access /procurement/reviews
+  const canViewReviews = hasAnyRole('procurement_specialist', 'system_admin');
+  // Only content_moderator and system_admin can call /disputes/transition (all actions)
+  const canArbitrate = hasAnyRole('content_moderator', 'system_admin');
+
   const [disputes, setDisputes] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [selectedDispute, setSelectedDispute] = useState(null);
@@ -39,18 +46,20 @@ export default function DisputeQueue() {
     setLoading(true);
     setError(null);
     try {
-      const [dispRes, revRes] = await Promise.all([
-        client.get('/procurement/disputes'),
-        client.get('/procurement/reviews'),
-      ]);
-      setDisputes(dispRes.data || []);
-      setReviews(revRes.data || []);
+      const fetches = [client.get('/procurement/disputes')];
+      // Only fetch reviews if the user's role permits it
+      if (canViewReviews) {
+        fetches.push(client.get('/procurement/reviews'));
+      }
+      const results = await Promise.all(fetches);
+      setDisputes(results[0].data || []);
+      setReviews(canViewReviews ? (results[1].data || []) : []);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load dispute data');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canViewReviews]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -238,16 +247,20 @@ export default function DisputeQueue() {
                 )}
               </div>
 
-              {/* Actions based on current status */}
+              {/* Actions based on current status and user role */}
               <div className="mt-6 pt-4 border-t border-gray-200">
-                {selectedDispute.status === 'created' && (
+                {selectedDispute.status === 'created' && canArbitrate && (
                   <div>
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Upload Evidence</h4>
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Submit Evidence URLs</h4>
+                    <p className="text-xs text-gray-500 mb-2">
+                      Enter one URL per line (max 20). Use intranet URLs or file paths to evidence documents
+                      accessible within your local network (e.g., <code>http://fileserver/evidence/doc.pdf</code>).
+                    </p>
                     <textarea
                       value={transForm.evidence_urls}
                       onChange={(e) => setTransForm(f => ({ ...f, evidence_urls: e.target.value }))}
-                      placeholder="Enter evidence URLs (one per line)"
-                      className="w-full border rounded-md px-3 py-2 text-sm mb-2 h-20"
+                      placeholder="http://fileserver/evidence/contract.pdf&#10;http://fileserver/evidence/invoice_scan.pdf"
+                      className="w-full border rounded-md px-3 py-2 text-sm mb-2 h-20 font-mono text-xs"
                     />
                     <button onClick={() => handleTransition(selectedDispute.id, 'upload_evidence')}
                       className="px-4 py-2 bg-yellow-500 text-white rounded-md text-sm hover:bg-yellow-600">
@@ -256,7 +269,7 @@ export default function DisputeQueue() {
                   </div>
                 )}
 
-                {selectedDispute.status === 'evidence_uploaded' && (
+                {selectedDispute.status === 'evidence_uploaded' && canArbitrate && (
                   <div className="space-y-3">
                     <div>
                       <h4 className="text-sm font-semibold text-gray-700 mb-2">Merchant Response</h4>
@@ -278,7 +291,7 @@ export default function DisputeQueue() {
                   </div>
                 )}
 
-                {selectedDispute.status === 'under_review' && (
+                {selectedDispute.status === 'under_review' && canArbitrate && (
                   <div className="space-y-3">
                     <textarea
                       value={transForm.merchant_response}
@@ -301,7 +314,7 @@ export default function DisputeQueue() {
                   </div>
                 )}
 
-                {selectedDispute.status === 'arbitration' && (
+                {selectedDispute.status === 'arbitration' && canArbitrate && (
                   <div className="space-y-3">
                     <h4 className="text-sm font-semibold text-gray-700">Arbitration Decision</h4>
                     <textarea

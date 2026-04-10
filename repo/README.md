@@ -25,7 +25,7 @@ A fully offline, on-premise enterprise portal for managing employee learning pat
 - **Taxonomy** - Hierarchical job/skill tags with synonym conflict detection (DB trigger blocks two active synonyms pointing to different canonical tags), moderator review queue (submit/approve/reject workflow) with full audit trail
 - **Learning Paths** - Required/elective completion rules (e.g., 6 required + 2 electives), per-resource progress tracking with resume bookmarks, cross-device sync, CSV export
 - **Reconciliation State Machine** - Invoice matching with auto-variance classification ($5.00 threshold), settlement transitions (open -> matched -> settled), AR/AP ledger with cost allocation by department/cost center, file-drop export to CSV
-- **Dispute Workflow** - Created -> Evidence Uploaded -> Under Review -> Arbitration -> Resolved. Arbitration outcomes control review visibility: hidden, shown with disclaimer, or restored. DB trigger enforces valid state transitions
+- **Dispute Workflow** - Created -> Evidence Uploaded -> Under Review -> Arbitration -> Resolved. Evidence is submitted as **URL references only** (max 20 URLs per dispute) pointing to intranet file servers or shared network paths — no binary upload. Arbitration outcomes control review visibility: hidden, shown with disclaimer, or restored. DB trigger enforces valid state transitions
 - **Configuration Center** - Feature flags with rollout strategies (all, role-based with JWT role IDs, deterministic percentage bucketing, disabled), in-memory cache with 30s background sync, app version compatibility checks
 - **Scheduled Jobs** - Centralized job orchestrator reading from `scheduled_jobs` table with persistent run history, retry with exponential backoff, and compensation handlers
 
@@ -42,9 +42,10 @@ A fully offline, on-premise enterprise portal for managing employee learning pat
 The system ships with **no seeded users** and **no seeded content**. All data is created by users at runtime.
 
 1. **Register the first user** via the UI (`/register`) or API: `POST /api/auth/register`
-   - The **first user** is automatically assigned the `system_admin` role with full access.
-2. **Subsequent users** register normally and receive **no role** until an admin assigns one.
-3. **Admin assigns roles** via the UI (Admin panel) or API: `POST /api/admin/users/assign-role`
+   - The **first user** is automatically assigned the `system_admin` role regardless of the role selected in the form.
+2. **Subsequent users** register and self-select a non-privileged role (`learner`, `procurement_specialist`, `approver`, `finance_analyst`, or `content_moderator`). The `system_admin` role cannot be self-assigned.
+3. **Admin can reassign roles** via the Admin panel or API: `POST /api/admin/users/assign-role`
+4. **Admin creates bootstrap data** (resources, learning paths, vendors, orders, invoices) via the Admin panel or API endpoints under `/api/admin/`.
 
 ### Available Roles
 
@@ -223,6 +224,12 @@ docker exec -it wlpr-db psql -U wlpr -d wlpr_portal
 |--------|-----------------------------|-------|------------------------------------|
 | GET    | `/api/admin/users`          | Admin | List all users                     |
 | POST   | `/api/admin/users/assign-role`| Admin | Assign role to user              |
+| POST   | `/api/admin/resources`      | Admin/Mod | Create resource                |
+| POST   | `/api/admin/learning/paths` | Admin/Mod | Create learning path           |
+| POST   | `/api/admin/learning/paths/items`| Admin/Mod | Add item to learning path |
+| POST   | `/api/admin/vendors`        | Admin | Create vendor                      |
+| POST   | `/api/admin/orders`         | Admin | Create procurement order           |
+| POST   | `/api/admin/invoices`       | Admin | Create invoice                     |
 | GET    | `/api/config/all`           | Admin | All system configs                 |
 | GET    | `/api/config/:key`          | Admin | Get config value                   |
 | PUT    | `/api/config/:key`          | Admin | Update config value                |

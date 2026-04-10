@@ -59,6 +59,20 @@ type SearchResponse struct {
 	Synonyms   []string   `json:"synonyms_applied,omitempty"`
 }
 
+type CreateResourceRequest struct {
+	Title        string  `json:"title" validate:"required"`
+	Description  *string `json:"description,omitempty"`
+	ContentBody  *string `json:"content_body,omitempty"`
+	ResourceType string  `json:"resource_type" validate:"required"`
+	CategoryID   *int    `json:"category_id,omitempty"`
+	DurationMins *int    `json:"duration_mins,omitempty"`
+	Difficulty   *string `json:"difficulty,omitempty"`
+	ThumbnailURL *string `json:"thumbnail_url,omitempty"`
+	ExternalURL  *string `json:"external_url,omitempty"`
+	PinyinTitle  *string `json:"pinyin_title,omitempty"`
+	TagIDs       []int   `json:"tag_ids,omitempty"`
+}
+
 type ArchivePage struct {
 	Month         string `json:"month"`
 	CategoryID    *int   `json:"category_id,omitempty"`

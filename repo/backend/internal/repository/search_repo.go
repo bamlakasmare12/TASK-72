@@ -393,3 +393,33 @@ func (r *SearchRepository) RefreshArchiveViews(ctx context.Context) (int, error)
 	}
 	return 1, nil
 }
+
+// CreateResource inserts a new resource and returns its ID.
+func (r *SearchRepository) CreateResource(ctx context.Context, res models.Resource, tagIDs []int) (*models.Resource, error) {
+	slug := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(res.Title)), " ", "-")
+	slug = fmt.Sprintf("%s-%d", slug, time.Now().UnixMilli())
+
+	var id int
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO resources (title, slug, description, content_body, resource_type, status,
+			category_id, author_id, duration_mins, difficulty, thumbnail_url, external_url,
+			pinyin_title, published_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		RETURNING id`,
+		res.Title, slug, res.Description, res.ContentBody, res.ResourceType, "published",
+		res.CategoryID, res.AuthorID, res.DurationMins, res.Difficulty,
+		res.ThumbnailURL, res.ExternalURL, res.PinyinTitle, time.Now(),
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("insert resource: %w", err)
+	}
+
+	for _, tagID := range tagIDs {
+		_, _ = r.db.Exec(ctx, `INSERT INTO resource_tags (resource_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, id, tagID)
+	}
+
+	res.ID = id
+	res.Slug = slug
+	res.Status = "published"
+	return &res, nil
+}

@@ -180,14 +180,13 @@ if [ -z "$NETWORK_NAME" ]; then
     NETWORK_NAME="repo_default"
 fi
 
-# Copy backend to a temp volume so go mod tidy can write go.sum without polluting the host
 if docker run --rm --network="$NETWORK_NAME" \
     -e TEST_DATABASE_URL="postgres://wlpr:wlpr_secret@db:5432/wlpr_portal?sslmode=disable" \
-    -v "$SCRIPT_DIR/backend:/src:ro" \
-    -v "$SCRIPT_DIR/config/config.js:/config/config.js:ro" \
+    -v "$SCRIPT_DIR:/src:ro" \
     golang:1.22-alpine sh -c "
-        cp -r /src /app && cd /app && go mod tidy &&
-        go test -v -tags=integration -count=1 -timeout=120s ./internal/repository/ 2>&1
+        cp -r /src /app && cd /app &&
+        go work sync &&
+        go test -v -tags=integration -count=1 -timeout=120s ./tests/e2e/backend/... 2>&1
     " ; then
     log_pass "Integration tests passed"
 else
@@ -200,14 +199,15 @@ fi
 log_info "Phase 5: Running unit tests..."
 
 if docker run --rm \
-    -v "$SCRIPT_DIR/backend:/src:ro" \
+    -v "$SCRIPT_DIR:/src:ro" \
     golang:1.22-alpine sh -c "
-        cp -r /src /app && cd /app && go mod tidy &&
-        go test -v -count=1 -timeout=120s ./pkg/... ./internal/services/ ./internal/handlers/ ./internal/middleware/ 2>&1
+        cp -r /src /app && cd /app &&
+        go work sync &&
+        go test -v -count=1 -timeout=120s ./tests/unit/backend/... ./tests/api/backend/... 2>&1
     " ; then
-    log_pass "Backend unit tests passed"
+    log_pass "Backend unit and API tests passed"
 else
-    log_fail "Backend unit tests failed"
+    log_fail "Backend unit and API tests failed"
 fi
 
 # ============================================================

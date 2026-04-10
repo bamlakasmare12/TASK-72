@@ -1,27 +1,54 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"wlpr-portal/internal/models"
 	"wlpr-portal/internal/services"
 	"wlpr-portal/pkg/jwt"
 
 	"github.com/labstack/echo/v4"
 )
 
-type AuthMiddleware struct {
-	authService   *services.AuthService
-	configService *services.ConfigService
+// SessionValidator is the minimal interface RequireAuth needs to validate a
+// session. *services.AuthService satisfies this interface in production. A
+// lightweight in-memory stub can satisfy it in unit tests, enabling full
+// session-validation path coverage without a live database.
+type SessionValidator interface {
+	ValidateSession(ctx context.Context, sessionID string) (*models.Session, error)
 }
 
-func NewAuthMiddleware(authService *services.AuthService, configService *services.ConfigService) *AuthMiddleware {
+type AuthMiddleware struct {
+	sessionValidator SessionValidator
+	configService    *services.ConfigService
+}
+
+// NewAuthMiddleware constructs an AuthMiddleware for production use.
+// authService implements SessionValidator; passing it as the interface keeps
+// the production call site in main.go unchanged.
+func NewAuthMiddleware(sv SessionValidator, configService *services.ConfigService) *AuthMiddleware {
 	return &AuthMiddleware{
-		authService:   authService,
-		configService: configService,
+		sessionValidator: sv,
+		configService:    configService,
 	}
+}
+
+// NewAuthMiddlewareWithConfig creates an AuthMiddleware without a session
+// validator. JWT claims are trusted without a database lookup. Use this in
+// tests that exercise RBAC or version-gate logic but do not need session
+// validation.
+func NewAuthMiddlewareWithConfig(configService *services.ConfigService) *AuthMiddleware {
+	return &AuthMiddleware{configService: configService}
+}
+
+// NewAuthMiddlewareWithSessionAndConfig is a convenience alias that names the
+// two-argument form explicitly — useful in tests to make the intent clear.
+func NewAuthMiddlewareWithSessionAndConfig(sv SessionValidator, configService *services.ConfigService) *AuthMiddleware {
+	return NewAuthMiddleware(sv, configService)
 }
 
 // RequireAuth validates the JWT, checks session validity (idle/max), and injects claims into context.
@@ -43,10 +70,15 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid or expired token")
 			}
 
-			// Validate session (idle timeout / max lifetime)
-			session, err := m.authService.ValidateSession(c.Request().Context(), claims.SessionID)
-			if err != nil || session == nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "session expired")
+			// Validate session (idle timeout / max lifetime).
+			// sessionValidator is nil only in tests that set up AuthMiddleware without
+			// a validator (version-gate / RBAC-only tests). Full session path is
+			// covered by tests that provide a mock SessionValidator.
+			if m.sessionValidator != nil {
+				session, err := m.sessionValidator.ValidateSession(c.Request().Context(), claims.SessionID)
+				if err != nil || session == nil {
+					return echo.NewHTTPError(http.StatusUnauthorized, "session expired")
+				}
 			}
 
 			// Store claims in context for downstream handlers
@@ -114,20 +146,26 @@ func (m *AuthMiddleware) RequirePermission(perms ...string) echo.MiddlewareFunc 
 // Clients below the minimum supported version enter a 14-day (configurable) read-only grace
 // period. During grace, GET/HEAD/OPTIONS requests are allowed but writes are blocked.
 // After the grace period expires, all requests are blocked.
+// If no version header is provided, the client is treated as version "0.0.0" (oldest possible)
+// so that the compatibility policy is still enforced.
 func (m *AuthMiddleware) AppVersionCheck() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			clientVersion := c.Request().Header.Get("X-App-Version")
-			if clientVersion == "" {
-				return next(c) // Allow requests without version header (browser clients)
-			}
 
 			minVersion, _ := m.configService.GetConfig("app.min_supported_version")
 			if minVersion == "" {
+				// No minimum version configured — skip enforcement
 				return next(c)
 			}
 
-			if compareVersions(clientVersion, minVersion) < 0 {
+			if clientVersion == "" {
+				// Missing version header: treat as oldest client ("0.0.0")
+				// so the compatibility policy still applies.
+				clientVersion = "0.0.0"
+			}
+
+			if CompareVersions(clientVersion, minVersion) < 0 {
 				// Determine grace period: how long the min_version has been in effect
 				graceDays := 14
 				if val, ok := m.configService.GetConfig("app.read_only_grace_days"); ok {
@@ -172,8 +210,8 @@ func (m *AuthMiddleware) AppVersionCheck() echo.MiddlewareFunc {
 	}
 }
 
-// compareVersions compares semver strings. Returns -1, 0, or 1.
-func compareVersions(a, b string) int {
+// CompareVersions compares semver strings. Returns -1, 0, or 1.
+func CompareVersions(a, b string) int {
 	partsA := strings.Split(a, ".")
 	partsB := strings.Split(b, ".")
 

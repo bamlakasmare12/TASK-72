@@ -48,9 +48,9 @@ var pinyinTable = map[rune]string{
 	'频': "pin", '认': "ren2", '证': "zheng",
 }
 
-// toneStrip removes trailing digit tone markers for search matching.
+// ToneStrip removes trailing digit tone markers for search matching.
 // E.g. "shi2" -> "shi", "ji3" -> "ji"
-func toneStrip(s string) string {
+func ToneStrip(s string) string {
 	if len(s) > 0 && s[len(s)-1] >= '2' && s[len(s)-1] <= '5' {
 		return s[:len(s)-1]
 	}
@@ -75,7 +75,7 @@ func ToPinyin(input string) string {
 			} else if lastWasPinyin {
 				result.WriteRune(' ')
 			}
-			result.WriteString(toneStrip(py))
+			result.WriteString(ToneStrip(py))
 			lastWasPinyin = true
 		} else if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			if lastWasPinyin {

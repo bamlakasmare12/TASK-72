@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import client from '../api/client';
 import SearchFilters from '../components/SearchFilters';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -256,12 +257,12 @@ function ResourceCard({ resource }) {
           </div>
 
           <h3 className="text-lg font-semibold text-gray-900 mb-1">
-            <a
-              href={`/resources/${resource.id}`}
+            <Link
+              to={`/resources/${resource.id}`}
               className="hover:text-primary-600 transition-colors"
             >
               {resource.title}
-            </a>
+            </Link>
           </h3>
 
           {resource.description && (

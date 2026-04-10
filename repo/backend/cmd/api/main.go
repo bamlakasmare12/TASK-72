@@ -138,9 +138,9 @@ func main() {
 	// Handlers
 	authHandler := handlers.NewAuthHandler(authService, mfaService, userRepo)
 	configHandler := handlers.NewConfigHandler(configService)
-	searchHandler := handlers.NewSearchHandler(searchService)
+	searchHandler := handlers.NewSearchHandler(searchService, searchRepo)
 	taxonomyHandler := handlers.NewTaxonomyHandler(taxonomyRepo)
-	learningHandler := handlers.NewLearningHandler(learningService)
+	learningHandler := handlers.NewLearningHandler(learningService, learningRepo)
 	procHandler := handlers.NewProcurementHandler(procRepo, reconService, exportSinkService)
 
 	// Middleware
@@ -186,6 +186,19 @@ func main() {
 		authMW.RequireRole("system_admin"))
 	adminGroup.GET("/users", authHandler.ListUsers)
 	adminGroup.POST("/users/assign-role", authHandler.AssignRole)
+
+	// Admin CRUD routes for bootstrap entities (system_admin + content_moderator for content)
+	adminContentGroup := e.Group("/api/admin", authMW.RequireAuth(),
+		authMW.RequireRole("content_moderator", "system_admin"))
+	adminContentGroup.POST("/resources", searchHandler.CreateResource)
+	adminContentGroup.POST("/learning/paths", learningHandler.CreatePath)
+	adminContentGroup.POST("/learning/paths/items", learningHandler.AddPathItem)
+
+	adminProcGroup := e.Group("/api/admin", authMW.RequireAuth(),
+		authMW.RequireRole("system_admin"))
+	adminProcGroup.POST("/vendors", procHandler.CreateVendor)
+	adminProcGroup.POST("/orders", procHandler.CreateOrder)
+	adminProcGroup.POST("/invoices", procHandler.CreateInvoice)
 
 	// Config routes (admin only)
 	configGroup := e.Group("/api/config",

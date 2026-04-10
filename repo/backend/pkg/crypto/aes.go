@@ -11,6 +11,14 @@ import (
 
 var encryptionKey []byte
 
+// SetEncryptionKey sets the raw encryption key bytes directly. Primarily useful
+// for tests and for key-rotation scenarios where the caller already has the
+// decoded bytes (e.g., from a hardware key source).
+// Pass nil to clear the key (reverts to uninitialized state).
+func SetEncryptionKey(key []byte) {
+	encryptionKey = key
+}
+
 // InitEncryptionKey initializes the AES-256 encryption key from a hex string.
 // The key must be 64 hex characters (32 bytes).
 func InitEncryptionKey() error {

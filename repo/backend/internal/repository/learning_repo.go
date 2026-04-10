@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"wlpr-portal/internal/models"
@@ -499,4 +500,38 @@ func scanPaths(rows pgx.Rows) ([]models.LearningPath, error) {
 		paths = append(paths, p)
 	}
 	return paths, rows.Err()
+}
+
+// CreateLearningPath inserts a new learning path and returns it.
+func (r *LearningRepository) CreateLearningPath(ctx context.Context, lp models.LearningPath, createdBy int) (*models.LearningPath, error) {
+	slug := fmt.Sprintf("%s-%d",
+		strings.ReplaceAll(strings.ToLower(strings.TrimSpace(lp.Title)), " ", "-"),
+		time.Now().UnixMilli())
+
+	var id int
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO learning_paths (title, slug, description, category_id, target_job_family,
+			required_count, elective_min, estimated_hours, difficulty, is_active, created_by)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		RETURNING id`,
+		lp.Title, slug, lp.Description, lp.CategoryID, lp.TargetJobFamily,
+		lp.RequiredCount, lp.ElectiveMin, lp.EstimatedHours, lp.Difficulty, true, createdBy,
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("insert learning path: %w", err)
+	}
+
+	lp.ID = id
+	lp.Slug = slug
+	lp.IsActive = true
+	return &lp, nil
+}
+
+// AddPathItem adds a resource to a learning path.
+func (r *LearningRepository) AddPathItem(ctx context.Context, pathID, resourceID int, itemType string, sortOrder int) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO learning_path_items (path_id, resource_id, item_type, sort_order)
+		VALUES ($1, $2, $3::path_item_type, $4) ON CONFLICT DO NOTHING`,
+		pathID, resourceID, itemType, sortOrder)
+	return err
 }

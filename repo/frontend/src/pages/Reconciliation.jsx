@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import client from '../api/client';
 import LoadingSpinner from '../components/LoadingSpinner';
+import { useAuthStore } from '../store/authStore';
 
 const STATUS_COLORS = {
   open: 'bg-gray-100 text-gray-700',
@@ -28,6 +29,12 @@ const INVOICE_STATUS_COLORS = {
 };
 
 export default function Reconciliation() {
+  const { hasAnyRole } = useAuthStore();
+  // Only finance_analyst and system_admin can access cost allocation, ledger, compare, and exports
+  const isFinanceOrAdmin = hasAnyRole('finance_analyst', 'system_admin');
+  // Only approver and system_admin can match invoices to orders (backend: procApprove group)
+  const canMatchInvoice = hasAnyRole('approver', 'system_admin');
+
   const [activeTab, setActiveTab] = useState('invoices');
   const [invoices, setInvoices] = useState([]);
   const [settlements, setSettlements] = useState([]);
@@ -45,22 +52,26 @@ export default function Reconciliation() {
     setLoading(true);
     setError(null);
     try {
-      const [invRes, settRes, costRes, ordRes] = await Promise.all([
+      const fetches = [
         client.get('/procurement/invoices'),
         client.get('/procurement/settlements'),
-        client.get('/procurement/cost-allocation'),
         client.get('/procurement/orders'),
-      ]);
-      setInvoices(invRes.data || []);
-      setSettlements(settRes.data || []);
-      setCostAllocation(costRes.data || []);
-      setOrders(ordRes.data || []);
+      ];
+      // Cost allocation is restricted to finance_analyst + system_admin
+      if (isFinanceOrAdmin) {
+        fetches.push(client.get('/procurement/cost-allocation'));
+      }
+      const results = await Promise.all(fetches);
+      setInvoices(results[0].data || []);
+      setSettlements(results[1].data || []);
+      setOrders(results[2].data || []);
+      setCostAllocation(isFinanceOrAdmin ? (results[3].data || []) : []);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load reconciliation data');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isFinanceOrAdmin]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -126,18 +137,23 @@ export default function Reconciliation() {
   const tabs = [
     { key: 'invoices', label: 'Invoices' },
     { key: 'settlements', label: 'Settlements' },
-    { key: 'compare', label: 'Statement Compare' },
-    { key: 'cost', label: 'Cost Allocation' },
+    // Compare and cost allocation are finance_analyst + system_admin only
+    ...(isFinanceOrAdmin ? [
+      { key: 'compare', label: 'Statement Compare' },
+      { key: 'cost', label: 'Cost Allocation' },
+    ] : []),
   ];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Finance & Reconciliation</h1>
-        <div className="flex space-x-2">
-          <button onClick={() => handleExport('ledger')} className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50">Export Ledger</button>
-          <button onClick={() => handleExport('settlements')} className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50">Export Settlements</button>
-        </div>
+        {isFinanceOrAdmin && (
+          <div className="flex space-x-2">
+            <button onClick={() => handleExport('ledger')} className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50">Export Ledger</button>
+            <button onClick={() => handleExport('settlements')} className="px-3 py-1.5 text-xs border border-gray-300 rounded-md hover:bg-gray-50">Export Settlements</button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -201,7 +217,7 @@ export default function Reconciliation() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm">
-                    {inv.status === 'pending' && (
+                    {inv.status === 'pending' && canMatchInvoice && (
                       <select
                         onChange={(e) => { if (e.target.value) handleMatchInvoice(inv.id, parseInt(e.target.value)); }}
                         className="text-xs border rounded px-2 py-1"

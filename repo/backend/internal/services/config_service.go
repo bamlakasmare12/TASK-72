@@ -38,6 +38,15 @@ func NewConfigServiceForTest(configs map[string]models.Config) *ConfigService {
 	}
 }
 
+// NewConfigServiceWithFlags creates a ConfigService pre-loaded with both configs and
+// feature flags. Use this in tests that exercise flag-evaluation logic.
+func NewConfigServiceWithFlags(configs map[string]models.Config, flags map[string]models.FeatureFlag) *ConfigService {
+	return &ConfigService{
+		configs: configs,
+		flags:   flags,
+	}
+}
+
 // LoadAll fetches all configs and flags from DB into the in-memory cache.
 func (s *ConfigService) LoadAll(ctx context.Context) error {
 	configs, err := s.configRepo.GetAllConfigs(ctx)

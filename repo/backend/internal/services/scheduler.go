@@ -109,7 +109,7 @@ func (s *SchedulerService) isDue(job repository.ScheduledJob, now time.Time) boo
 		return true // Never run before
 	}
 
-	interval := parseCronInterval(job.CronExpr)
+	interval := ParseCronInterval(job.CronExpr)
 	if interval == 0 {
 		return false
 	}
@@ -117,12 +117,12 @@ func (s *SchedulerService) isDue(job repository.ScheduledJob, now time.Time) boo
 	return now.Sub(*job.LastRunAt) >= interval
 }
 
-// parseCronInterval converts a cron expression to a duration.
+// ParseCronInterval converts a cron expression to a duration.
 // Supports:
 //   - "*/N * * * *" -> every N minutes
 //   - "0 H * * *"   -> every 24 hours (daily jobs)
 //   - "0 H * * D"   -> every 7 days (weekly jobs)
-func parseCronInterval(expr string) time.Duration {
+func ParseCronInterval(expr string) time.Duration {
 	parts := strings.Fields(expr)
 	if len(parts) < 5 {
 		return 0

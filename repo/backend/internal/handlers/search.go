@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"wlpr-portal/internal/models"
+	"wlpr-portal/internal/repository"
 	"wlpr-portal/internal/services"
 
 	"github.com/labstack/echo/v4"
@@ -13,10 +14,15 @@ import (
 
 type SearchHandler struct {
 	searchService *services.SearchService
+	searchRepo    *repository.SearchRepository
 }
 
-func NewSearchHandler(searchService *services.SearchService) *SearchHandler {
-	return &SearchHandler{searchService: searchService}
+func NewSearchHandler(searchService *services.SearchService, searchRepo ...*repository.SearchRepository) *SearchHandler {
+	h := &SearchHandler{searchService: searchService}
+	if len(searchRepo) > 0 {
+		h.searchRepo = searchRepo[0]
+	}
+	return h
 }
 
 // GET /api/search?q=...&categories=1,2&tags=3,4&date_from=2024-01-01&date_to=2024-12-31&difficulty=beginner&type=course&sort_by=relevance&page=1&page_size=20
@@ -99,6 +105,39 @@ func parseIntList(s string) []int {
 		}
 	}
 	return result
+}
+
+// POST /api/admin/resources
+func (h *SearchHandler) CreateResource(c echo.Context) error {
+	var req models.CreateResourceRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.Title == "" || req.ResourceType == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "title and resource_type are required")
+	}
+
+	userID := c.Get("user_id").(int)
+	res := models.Resource{
+		Title:        req.Title,
+		Description:  req.Description,
+		ContentBody:  req.ContentBody,
+		ResourceType: req.ResourceType,
+		CategoryID:   req.CategoryID,
+		AuthorID:     &userID,
+		DurationMins: req.DurationMins,
+		Difficulty:   req.Difficulty,
+		ThumbnailURL: req.ThumbnailURL,
+		ExternalURL:  req.ExternalURL,
+		PinyinTitle:  req.PinyinTitle,
+	}
+
+	created, err := h.searchRepo.CreateResource(c.Request().Context(), res, req.TagIDs)
+	if err != nil {
+		log.Printf("[search] create resource error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create resource")
+	}
+	return c.JSON(http.StatusCreated, created)
 }
 
 func splitComma(s string) []string {

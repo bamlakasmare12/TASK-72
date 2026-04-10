@@ -191,6 +191,17 @@ func (s *ReconciliationService) TransitionDispute(ctx context.Context, req model
 		if len(req.EvidenceURLs) == 0 {
 			return fmt.Errorf("at least one evidence URL is required")
 		}
+		// Evidence is submitted as URLs only (no binary upload).
+		// URLs must be non-empty strings. Typical usage: internal file server paths
+		// (e.g., file:///shared/evidence/file.pdf) or intranet HTTP URLs.
+		for i, u := range req.EvidenceURLs {
+			if len(u) == 0 {
+				return fmt.Errorf("evidence_urls[%d] is empty; all URLs must be non-empty strings", i)
+			}
+		}
+		if len(req.EvidenceURLs) > 20 {
+			return fmt.Errorf("at most 20 evidence URLs may be submitted per dispute")
+		}
 		newStatus = "evidence_uploaded"
 		updates["evidence_urls"] = req.EvidenceURLs
 

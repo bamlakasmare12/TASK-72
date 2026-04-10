@@ -1,106 +1,88 @@
 1. Verdict
-- Fail
+- Partial Pass
 
 2. Scope and Verification Boundary
-- Reviewed: `README.md`, `docker-compose.yml`, `backend/init.sql`, backend route/auth/search/learning/procurement/config modules, frontend routing/auth/pages/components, and test suites under `backend/internal/**/*test.go` and `frontend/src/test/*`.
-- Excluded input sources: `./.tmp/` and all subdirectories (none used as evidence).
-- Executed (non-Docker): `npm run test` (23/23 tests passed) and `npm run build` (build succeeded) in `frontend/`.
-- Not executed: any Docker command (per constraint), `run_test.sh`, `run_test.ps1`, backend runtime startup, backend integration runtime flow.
-- Docker-based verification required by provided runners (`run_test.sh`, `run_test.ps1`) but not executed due review constraints.
-- Unconfirmed: full backend startup in this environment, end-to-end API behavior against PostgreSQL, file-drop/webhook export runtime behavior.
+- Reviewed: `README.md`, `docker-compose.yml`, `backend/init.sql`, backend API wiring (`backend/cmd/api/main.go`), auth/RBAC/middleware/services/repositories, frontend routing/pages/stores/components, and test files under `backend/internal/**/*test.go` and `frontend/src/test/*`.
+- Excluded from evidence by rule: `./.tmp/` and all its subdirectories.
+- Executed (non-Docker only): `npm run test` and `npm run build` in `frontend/`.
+- Not executed: Docker-based startup/tests (`run_test.sh`, `run_test.ps1`), backend runtime boot against PostgreSQL, integration tests requiring DB/container runtime.
+- Docker-based verification was documented but intentionally not executed per constraints.
+- Remaining unconfirmed: end-to-end backend behavior in this environment (auth/session timeouts, procurement settlement/dispute transitions against real DB, export sink runtime delivery).
 
 3. Top Findings
-- Severity: Blocker
-  - Conclusion: Public registration allows self-assignment of `system_admin`, enabling privilege escalation.
-  - Brief rationale: Prompt/README describe first-user bootstrap + admin-assigned roles, but implementation allows any registrant to request and receive admin.
-  - Evidence: `backend/internal/handlers/auth.go:151`, `backend/internal/handlers/auth.go:189`, `backend/internal/models/register.go:35`, `frontend/src/pages/Register.jsx:7`, `README.md:41`.
-  - Impact: Any unauthenticated user can obtain full system privileges.
-  - Minimum actionable fix: Remove `system_admin` (and other privileged roles as needed) from self-registration; implement first-user bootstrap using `CountUsers()` and enforce admin-only role assignment for subsequent users.
+- Severity: High
+  - Conclusion: Near-duplicate deduplication is not implemented in the delivered logic.
+  - Brief rationale: The prompt explicitly requires deduplication across near-duplicate resources, but runtime search/recommendation logic does not use the duplicate key.
+  - Evidence: `backend/init.sql:390` (`content_hash` declared for near-duplicate detection); search/recommendation code paths do not use this field (`backend/internal/repository/search_repo.go:24`, `backend/internal/services/recommendation_worker.go:132`); repository-wide `content_hash` usage appears only in model/select code.
+  - Impact: Learners can see repeated near-duplicate items in search and recommendation surfaces, reducing relevance and prompt fit.
+  - Minimum actionable fix: Compute/store `content_hash` on ingestion/update and enforce dedup in `/api/search` and recommendation candidate generation (collapse by canonical resource or hash cluster).
 
 - Severity: High
-  - Conclusion: Dispute evidence metadata encryption-at-rest is not implemented.
-  - Brief rationale: Schema defines encrypted evidence metadata field, but dispute flows only store plaintext URL arrays and never write encrypted metadata.
-  - Evidence: `backend/init.sql:777`, `backend/internal/services/reconciliation.go:193`, `backend/internal/repository/procurement_repo.go:660`, static search found no Go reference to `evidence_metadata_enc`.
-  - Impact: Fails explicit security requirement for sensitive dispute evidence metadata.
-  - Minimum actionable fix: Add evidence metadata model + AES encryption/decryption path and persist to `disputes.evidence_metadata_enc`; avoid exposing raw sensitive metadata in non-admin responses.
+  - Conclusion: Taxonomy admin review queue and audit-trail workflow are only partially implemented.
+  - Brief rationale: Queue schema/read endpoint exist, but tag/synonym creation bypasses queue and writes directly to active records; taxonomy-specific audit trail flow is missing.
+  - Evidence: Queue table exists (`backend/init.sql:317`); direct writes in `backend/internal/repository/taxonomy_repo.go:142` and `backend/internal/repository/taxonomy_repo.go:213`; queue read only in `backend/internal/repository/taxonomy_repo.go:249` and `backend/internal/handlers/taxonomy.go:124`; audit logging is only used for login/logout (`backend/internal/services/auth_service.go:158`, `backend/internal/services/auth_service.go:174`).
+  - Impact: Required governance path (review/approval queue + traceable taxonomy operations) is not delivered end-to-end.
+  - Minimum actionable fix: Route create/update requests through `pending` queue entries, add moderator approve/reject actions, and persist taxonomy audit entries for submissions/reviews/conflict resolutions.
 
 - Severity: High
-  - Conclusion: Required downstream finance export integration (offline file drop or LAN webhook) is missing.
-  - Brief rationale: Current exports are browser CSV downloads only; no file-drop writer or webhook dispatcher path exists.
-  - Evidence: `backend/internal/handlers/procurement.go:218`, `backend/internal/handlers/procurement.go:261`, static search shows no backend implementation for `EXPORT_DIR`/webhook usage.
-  - Impact: Core reconciliation delivery requirement is not met for offline enterprise integration.
-  - Minimum actionable fix: Implement configurable export sink(s): local file-drop writer (using configured directory) and LAN webhook sender with retry/compensation.
+  - Conclusion: Feature-flag phased rollout by role/percentage is not implemented to production-grade semantics.
+  - Brief rationale: Percentage rollout lacks deterministic user bucketing, and role-based checks are often called without user role context.
+  - Evidence: Percentage logic is `rollout_percentage > 0` (`backend/internal/services/config_service.go:153`); flag check endpoint uses `IsFlagEnabled(key, nil)` (`backend/internal/handlers/config.go:93`); search feature flags also pass nil role context (`backend/internal/services/search_service.go:36`, `backend/internal/services/search_service.go:48`).
+  - Impact: “Phased rollout by user role” requirement is only superficially present; real staged rollout control is unreliable.
+  - Minimum actionable fix: Resolve role IDs/user ID from JWT claims at call sites and implement deterministic percentage bucketing (e.g., hash(user_id, flag_key) < rollout%).
 
 - Severity: High
-  - Conclusion: Recommendation diversity control can exceed the 40% per-category cap.
-  - Brief rationale: Algorithm caps initial selection per category, then appends deferred items without re-checking category quota.
-  - Evidence: `backend/internal/services/recommendation_worker.go:347`, `backend/internal/services/recommendation_worker.go:371`.
-  - Impact: Violates explicit recommendation diversity requirement.
-  - Minimum actionable fix: Enforce quota during deferred refill too; add deterministic tests asserting max-category ratio <= configured threshold.
+  - Conclusion: Centralized scheduled-jobs management with retry/compensation is incomplete.
+  - Brief rationale: The schema includes scheduled job metadata, but runtime jobs are hardcoded goroutines and do not consume persisted job definitions/state.
+  - Evidence: `scheduled_jobs` schema exists (`backend/init.sql:131`); runtime starts fixed loops (`backend/cmd/api/main.go:67`, `backend/cmd/api/main.go:79`); no backend implementation consuming `scheduled_jobs` table in reviewed code.
+  - Impact: Config-center expectation for managed scheduled tasks (with persistent retry/comp tracking) is not fully met.
+  - Minimum actionable fix: Implement a scheduler service that reads `scheduled_jobs`, records run status/retries, and executes compensation strategies via persisted job metadata.
 
 - Severity: Medium
-  - Conclusion: Version compatibility grace-window behavior (read-only up to 14 days) is not implemented.
-  - Brief rationale: Middleware immediately blocks all write methods for unsupported clients; no grace-period timing logic is applied.
-  - Evidence: `backend/internal/middleware/auth_middleware.go:124`, `backend/internal/middleware/auth_middleware.go:132`, `backend/init.sql:126`, `backend/init.sql:252`.
-  - Impact: Prompt-fit gap in version governance and rollout semantics.
-  - Minimum actionable fix: Track release/min-version timestamps and apply read-only grace logic using configured grace days before hard block.
-
-- Severity: Medium
-  - Conclusion: Personal-data masking in non-admin views is incomplete.
-  - Brief rationale: Review APIs return reviewer identifiers/content without role-based masking for non-admin users.
-  - Evidence: `backend/internal/repository/procurement_repo.go:480`, `backend/internal/models/procurement.go:138`, `backend/cmd/api/main.go:215`.
-  - Impact: Does not satisfy explicit masking requirement and increases unnecessary exposure.
-  - Minimum actionable fix: Add response DTO masking policy by role (e.g., redact reviewer identifiers/body elements for non-admin where required).
+  - Conclusion: Test assurance is partial for backend-critical flows in this environment.
+  - Brief rationale: Frontend tests/build pass, but backend tests were not executable here and many security tests are middleware/handler stubs rather than full-stack execution.
+  - Evidence: command output `go test ./...` -> `zsh:1: command not found: go`; stub-style tests in `backend/internal/middleware/version_middleware_test.go:42`, `backend/internal/handlers/api_security_test.go:35`, `backend/internal/handlers/procurement_handler_test.go:341`.
+  - Impact: Core offline backend flows remain partially unverified for delivery acceptance.
+  - Minimum actionable fix: Provide/verify a non-Docker backend test path in docs and add true integration tests for auth+RBAC+procurement/learning end-to-end paths.
 
 4. Security Summary
-- authentication / login-state handling: Fail
-  - Evidence: bcrypt + MFA exist, but registration allows arbitrary role self-assignment including `system_admin` (`backend/internal/handlers/auth.go:151`, `backend/internal/handlers/auth.go:189`).
-- frontend route protection / route guards: Pass
-  - Evidence: `frontend/src/components/ProtectedRoute.jsx` enforces auth + role checks; backend also enforces role middleware in route groups (`backend/cmd/api/main.go`).
-- page-level / feature-level access control: Partial Pass
-  - Evidence: Role-based endpoint grouping is present (`backend/cmd/api/main.go`), but data masking requirements for non-admin views are not fully enforced.
-- sensitive information exposure: Partial Pass
-  - Evidence: Authorization header not logged (`backend/internal/middleware/logging.go:11`), but review payloads expose reviewer-linked data to non-admin roles (`backend/internal/repository/procurement_repo.go:480`).
-- cache / state isolation after switching users: Pass
-  - Evidence: `logout()` clears token/user/UI flags and localStorage (`frontend/src/store/authStore.js:129`).
+- authentication: Partial Pass
+  - Evidence: bcrypt hashing (`backend/pkg/crypto/hash.go:7`), failed-login lockout (`backend/internal/repository/user_repo.go:205`), session validation middleware (`backend/internal/middleware/auth_middleware.go:27`), TOTP flows (`backend/internal/services/mfa_service.go:29`). Runtime verification boundary remains.
+- route authorization: Pass
+  - Evidence: protected route groups combine auth + role middleware per module (`backend/cmd/api/main.go:127`, `backend/cmd/api/main.go:155`, `backend/cmd/api/main.go:206`, `backend/cmd/api/main.go:253`).
 - object-level authorization: Partial Pass
-  - Evidence: learning progress uses token-derived user context; broad procurement reads are role-scoped with no finer ownership checks (cannot confirm policy intent).
+  - Evidence: learning endpoints scope to token-derived user (`backend/internal/handlers/learning.go:50`, `backend/internal/handlers/learning.go:83`, `backend/internal/handlers/learning.go:151`); procurement reads are role-scoped but broad object ownership boundaries are not strongly defined in prompt-aligned policy.
 - tenant / user isolation: Cannot Confirm
-  - Evidence boundary: single-org model evident; no explicit multi-tenant partitioning semantics in reviewed code.
+  - Evidence boundary: implementation appears single-organization; explicit multi-tenant boundary model/isolation policy is not present in reviewed code.
 
 5. Test Sufficiency Summary
 - Test Overview
-  - Unit tests exist: Yes (backend + frontend).
-  - Component tests exist: Yes (`frontend/src/test/*.test.jsx`).
-  - Page/route integration tests exist: Partial (e.g., `ProtectedRoute` behavior tests).
-  - E2E tests exist: Not found.
-  - Obvious entry points: frontend `npm run test`; backend `go test ./...` and integration tests with `-tags=integration`.
+  - Unit tests exist: Yes (backend and frontend test files present).
+  - API/integration tests exist: Yes (backend handler tests + integration-tag DB tests such as `backend/internal/repository/dispute_integration_test.go` and `backend/internal/repository/search_integration_test.go`).
+  - Obvious entry points: `frontend` -> `npm run test`; backend -> `go test ./...` and integration-tag commands in comments/scripts.
+  - Runtime evidence: frontend tests passed (`23/23`) and frontend build succeeded; backend tests could not be executed in this environment because Go toolchain is unavailable.
 - Core Coverage
-  - happy path: partial
-    - Evidence: frontend tests are mostly render-level (`frontend/src/test/Login.test.jsx`, `frontend/src/test/Register.test.jsx`); limited full-flow assertions.
-  - key failure paths: partial
-    - Evidence: many backend handler tests validate request fields only with nil dependencies (`backend/internal/handlers/auth_handler_test.go:16`, `backend/internal/handlers/procurement_handler_test.go:17`).
-  - security-critical coverage: partial
-    - Evidence: RBAC/auth tests exist, plus DB trigger integration tests (`backend/internal/repository/dispute_integration_test.go`), but no end-to-end privilege escalation test for registration role abuse.
+  - happy path: partially covered
+    - Evidence: frontend auth/store component tests pass; backend has coverage files but not executed here.
+  - key failure paths: partially covered
+    - Evidence: validation/RBAC/version tests exist, but several are stubbed middleware-level tests and not end-to-end.
+  - security-critical coverage: partially covered
+    - Evidence: security-focused tests exist (`backend/internal/handlers/api_security_test.go`) but are synthetic route setups rather than full runtime with DB/session state.
 - Major Gaps
-  - Missing end-to-end test proving non-admin users cannot self-register privileged roles.
-  - Missing integration test for recommendation diversity hard-cap enforcement (<=40% per category).
-  - Missing integration/E2E test for finance export sinks (file-drop/LAN webhook) and retry/compensation behavior.
+  - Missing executable confirmation of backend integration suite in this environment.
+  - No end-to-end test proving near-duplicate dedup behavior in search/recommendations.
+  - No end-to-end test validating taxonomy review-queue workflow (submit -> review -> approve/reject -> audit).
 - Final Test Verdict
   - Partial Pass
 
 6. Engineering Quality Summary
-- Positives: clear modular separation (handlers/services/repositories), reasonably structured schema, and explicit middleware layering.
-- Material concerns: documented business rules diverge from implementation (registration role policy, version grace behavior), several required capabilities are schema-only or partially wired (evidence encryption, export integration), and many tests are shallow around mocked/stubbed paths.
-- Delivery confidence impact: high risk for security and prompt-fit despite acceptable project skeleton and frontend build/test health.
+- Positives: module separation is generally clear (handlers/services/repositories), DB schema is substantial, RBAC route grouping is consistent, and frontend includes loading/empty/error states.
+- Major maintainability concerns affecting delivery confidence: several prompt-critical capabilities are schema-present but runtime-incomplete (taxonomy review workflow, scheduled job center, robust rollout semantics), and backend verification confidence is reduced by environment/tooling boundary.
+- Logging professionalism: request logging exists with basic sanitization intent (`backend/internal/middleware/logging.go:10`), but operational diagnostics for cross-module workflows remain limited.
 
-7. Visual and Interaction Summary
-- Applicable and generally acceptable: layout hierarchy, role-aware navigation, and basic loading/error/empty states are implemented across key pages.
-- Verification boundary: no browser-driven manual UX audit was executed here; visual conclusions are static-code and build-output based.
-
-8. Next Actions
-- 1) Block self-assigned privileged roles at registration and implement first-user bootstrap + admin-only role assignment.
-- 2) Implement encrypted dispute evidence metadata persistence and role-based masking in non-admin responses.
-- 3) Add offline finance export sinks (file-drop and/or LAN webhook) with retries/compensation.
-- 4) Fix recommendation diversity enforcement to guarantee <=40% per category and add deterministic tests.
-- 5) Implement 14-day read-only grace logic for version compatibility and add integration tests for state transitions.
+7. Next Actions
+- 1) Implement near-duplicate dedup pipeline (hash generation + query-time collapse) for search and recommendation outputs.
+- 2) Complete taxonomy governance flow: queue submission, moderator actions, and audit-trail persistence for tag/synonym lifecycle events.
+- 3) Fix feature-flag rollout semantics (role-context evaluation + deterministic percentage bucketing) and add integration tests.
+- 4) Implement a real scheduled-job orchestrator using `scheduled_jobs` table with persisted retries/compensation state.
+- 5) Add a runnable non-Docker backend verification path (or document required local toolchain clearly) and execute backend integration tests as part of acceptance.

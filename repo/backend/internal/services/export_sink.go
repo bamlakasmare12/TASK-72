@@ -33,8 +33,8 @@ type ExportConfig struct {
 	RetryDelaySecs int
 }
 
-// getExportConfig resolves export sink configuration from the config service.
-func (s *ExportSinkService) getExportConfig() ExportConfig {
+// GetExportConfig resolves export sink configuration from the config service.
+func (s *ExportSinkService) GetExportConfig() ExportConfig {
 	cfg := ExportConfig{
 		MaxRetries:     3,
 		RetryDelaySecs: 5,
@@ -64,13 +64,13 @@ func (s *ExportSinkService) getExportConfig() ExportConfig {
 // ExportLedgerToSinks exports ledger entries to configured sinks (file-drop and/or webhook).
 // Returns nil if no sinks are configured (browser CSV download is still available).
 func (s *ExportSinkService) ExportLedgerToSinks(ctx context.Context, entries []models.LedgerEntry) error {
-	cfg := s.getExportConfig()
+	cfg := s.GetExportConfig()
 
 	if cfg.FileDropDir == "" && cfg.WebhookURL == "" {
 		return nil // No sinks configured; browser download only
 	}
 
-	csvData, err := ledgerToCSV(entries)
+	csvData, err := LedgerToCSV(entries)
 	if err != nil {
 		return fmt.Errorf("failed to generate CSV: %w", err)
 	}
@@ -103,13 +103,13 @@ func (s *ExportSinkService) ExportLedgerToSinks(ctx context.Context, entries []m
 
 // ExportSettlementsToSinks exports settlements to configured sinks.
 func (s *ExportSinkService) ExportSettlementsToSinks(ctx context.Context, settlements []models.Settlement) error {
-	cfg := s.getExportConfig()
+	cfg := s.GetExportConfig()
 
 	if cfg.FileDropDir == "" && cfg.WebhookURL == "" {
 		return nil
 	}
 
-	csvData, err := settlementsToCSV(settlements)
+	csvData, err := SettlementsToCSV(settlements)
 	if err != nil {
 		return fmt.Errorf("failed to generate CSV: %w", err)
 	}
@@ -222,8 +222,8 @@ func (s *ExportSinkService) sendWebhook(ctx context.Context, cfg ExportConfig, e
 	return fmt.Errorf("webhook failed after %d retries: %w", cfg.MaxRetries, lastErr)
 }
 
-// ledgerToCSV converts ledger entries to CSV bytes.
-func ledgerToCSV(entries []models.LedgerEntry) ([]byte, error) {
+// LedgerToCSV converts ledger entries to CSV bytes.
+func LedgerToCSV(entries []models.LedgerEntry) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 
@@ -259,8 +259,8 @@ func ledgerToCSV(entries []models.LedgerEntry) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// settlementsToCSV converts settlements to CSV bytes.
-func settlementsToCSV(settlements []models.Settlement) ([]byte, error) {
+// SettlementsToCSV converts settlements to CSV bytes.
+func SettlementsToCSV(settlements []models.Settlement) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 

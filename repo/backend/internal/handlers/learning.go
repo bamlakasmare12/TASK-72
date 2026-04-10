@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"wlpr-portal/internal/models"
+	"wlpr-portal/internal/repository"
 	"wlpr-portal/internal/services"
 
 	"github.com/labstack/echo/v4"
@@ -15,10 +16,15 @@ import (
 
 type LearningHandler struct {
 	learningService *services.LearningService
+	learningRepo    *repository.LearningRepository
 }
 
-func NewLearningHandler(learningService *services.LearningService) *LearningHandler {
-	return &LearningHandler{learningService: learningService}
+func NewLearningHandler(learningService *services.LearningService, learningRepo ...*repository.LearningRepository) *LearningHandler {
+	h := &LearningHandler{learningService: learningService}
+	if len(learningRepo) > 0 {
+		h.learningRepo = learningRepo[0]
+	}
+	return h
 }
 
 // GET /api/learning/paths
@@ -200,4 +206,54 @@ func (h *LearningHandler) GetRecommendations(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to retrieve recommendations")
 	}
 	return c.JSON(http.StatusOK, recs)
+}
+
+// POST /api/admin/learning/paths
+func (h *LearningHandler) CreatePath(c echo.Context) error {
+	var req models.CreateLearningPathRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.Title == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "title is required")
+	}
+
+	userID := c.Get("user_id").(int)
+	lp := models.LearningPath{
+		Title:           req.Title,
+		Description:     req.Description,
+		CategoryID:      req.CategoryID,
+		TargetJobFamily: req.TargetJobFamily,
+		RequiredCount:   req.RequiredCount,
+		ElectiveMin:     req.ElectiveMin,
+		EstimatedHours:  req.EstimatedHours,
+		Difficulty:      req.Difficulty,
+	}
+
+	created, err := h.learningRepo.CreateLearningPath(c.Request().Context(), lp, userID)
+	if err != nil {
+		log.Printf("[learning] create path error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to create learning path")
+	}
+	return c.JSON(http.StatusCreated, created)
+}
+
+// POST /api/admin/learning/paths/items
+func (h *LearningHandler) AddPathItem(c echo.Context) error {
+	var req models.AddPathItemRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
+	}
+	if req.PathID == 0 || req.ResourceID == 0 || req.ItemType == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "path_id, resource_id, and item_type are required")
+	}
+	if req.ItemType != "required" && req.ItemType != "elective" {
+		return echo.NewHTTPError(http.StatusBadRequest, "item_type must be 'required' or 'elective'")
+	}
+
+	if err := h.learningRepo.AddPathItem(c.Request().Context(), req.PathID, req.ResourceID, req.ItemType, req.SortOrder); err != nil {
+		log.Printf("[learning] add path item error: %v", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "failed to add path item")
+	}
+	return c.JSON(http.StatusCreated, map[string]string{"message": "path item added"})
 }
