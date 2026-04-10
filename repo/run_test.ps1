@@ -14,11 +14,12 @@ $UI_PORT = 3001
 
 Log-Info "Phase 1: Building and starting Docker containers..."
 docker compose down -v --remove-orphans 2>$null
-$buildResult = docker compose build --no-cache 2>&1
+$buildResult = docker compose build --no-cache --progress=plain 2>&1
 if ($LASTEXITCODE -eq 0) { Log-Pass "Docker build succeeded" }
 else { Log-Fail "Docker build failed"; Write-Host $buildResult; exit 1 }
 
-docker compose up -d
+# Start containers (may exit non-zero due to health check race; we poll manually)
+docker compose up -d 2>$null
 Log-Info "Waiting for services to become healthy..."
 $healthy = $false
 for ($i = 1; $i -le 30; $i++) {

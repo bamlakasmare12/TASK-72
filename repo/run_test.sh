@@ -26,14 +26,15 @@ log_info "Phase 1: Building and starting Docker containers..."
 
 docker compose down -v --remove-orphans 2>/dev/null || true
 
-if docker compose build --no-cache 2>&1; then
+if docker compose build --no-cache --progress=plain 2>&1; then
     log_pass "Docker build succeeded"
 else
     log_fail "Docker build failed"
     exit 1
 fi
 
-docker compose up -d
+# Start containers (may exit non-zero due to health check race; we poll manually)
+docker compose up -d || true
 
 # Wait for backend to be healthy
 log_info "Waiting for services to become healthy..."

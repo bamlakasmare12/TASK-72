@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: wlpr
       POSTGRES_PASSWORD: wlpr_secret
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - wlpr_pgdata:/var/lib/postgresql/data
       - ./backend/init.sql:/docker-entrypoint-initdb.d/01-init.sql
@@ -23,7 +23,7 @@ services:
     build: ./backend
     container_name: wlpr-backend
     ports:
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     volumes:
       - ./config/config.js:/config/config.js:ro
     depends_on:
@@ -41,12 +41,18 @@ services:
     build: ./frontend
     container_name: wlpr-frontend
     ports:
-      - "3001:80"
+      - "127.0.0.1:3001:80"
     volumes:
       - ./config/config.js:/usr/share/nginx/html/config.js:ro
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 
 volumes:
