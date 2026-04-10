@@ -11,6 +11,7 @@ function Log-Info($msg) { Write-Host "[INFO] $msg" -ForegroundColor Yellow }
 # Port configuration (must match docker-compose.yml)
 $API_PORT = 8081
 $UI_PORT = 3001
+$APP_VERSION = "1.0.0"
 
 Log-Info "Phase 1: Building and starting Docker containers..."
 docker compose down -v --remove-orphans 2>$null
@@ -50,26 +51,27 @@ try { $f = Invoke-WebRequest -Uri "http://localhost:${UI_PORT}/"; if ($f.Content
 try { $c = Invoke-WebRequest -Uri "http://localhost:${UI_PORT}/config.js"; if ($c.Content -match "__WLPR_CONFIG__") { Log-Pass "config.js OK" } } catch { Log-Fail "config.js failed" }
 
 Log-Info "Phase 3: Registration and API smoke tests..."
+$versionHeaders = @{ "X-App-Version" = $APP_VERSION }
 try {
-    $reg = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/register" -ContentType "application/json" -Body '{"username":"testadmin","email":"ta@test.local","password":"TestAdmin@2024!","display_name":"Test Admin","role":"system_admin"}'
+    $reg = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/register" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testadmin","email":"ta@test.local","password":"TestAdmin@2024!","display_name":"Test Admin","role":"system_admin"}'
     if ($reg.message) { Log-Pass "First user registered (auto-admin)" } else { Log-Fail "Registration failed" }
 } catch { Log-Fail "Registration error: $_" }
 
 try {
-    $login = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/login" -ContentType "application/json" -Body '{"username":"testadmin","password":"TestAdmin@2024!"}'
+    $login = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/login" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testadmin","password":"TestAdmin@2024!"}'
     if ($login.token) {
         Log-Pass "Admin login succeeded"
-        $headers = @{ "Authorization" = "Bearer $($login.token)" }
+        $headers = @{ "Authorization" = "Bearer $($login.token)"; "X-App-Version" = $APP_VERSION }
         $me = Invoke-RestMethod -Uri "http://localhost:${API_PORT}/api/auth/me" -Headers $headers
         if ($me.user_id) { Log-Pass "GET /api/auth/me OK" }
 
         # Register second user with learner role
-        $reg2 = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/register" -ContentType "application/json" -Body '{"username":"testlearner","email":"tl@test.local","password":"Learner@2024!","display_name":"Test Learner","role":"learner"}'
+        $reg2 = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/register" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testlearner","email":"tl@test.local","password":"Learner@2024!","display_name":"Test Learner","role":"learner"}'
         if ($reg2.message -match "learner") { Log-Pass "Second user registered with learner role" }
 
         # RBAC test
-        $ll = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/login" -ContentType "application/json" -Body '{"username":"testlearner","password":"Learner@2024!"}'
-        $lh = @{ "Authorization" = "Bearer $($ll.token)" }
+        $ll = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/login" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testlearner","password":"Learner@2024!"}'
+        $lh = @{ "Authorization" = "Bearer $($ll.token)"; "X-App-Version" = $APP_VERSION }
         try { Invoke-RestMethod -Uri "http://localhost:${API_PORT}/api/procurement/settlements" -Headers $lh; Log-Fail "Learner accessed settlements" }
         catch { if ($_.Exception.Response.StatusCode.value__ -eq 404) { Log-Pass "RBAC: Learner gets 404 (feature invisible)" } else { Log-Fail "RBAC: Got $($_.Exception.Response.StatusCode.value__)" } }
     }

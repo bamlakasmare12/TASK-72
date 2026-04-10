@@ -18,6 +18,7 @@ log_info() { echo -e "${YELLOW}[INFO]${NC} $1"; }
 # Port configuration (must match docker-compose.yml)
 API_PORT=8081
 UI_PORT=3001
+APP_VERSION="1.0.0"
 
 # ============================================================
 # Phase 1: Docker build and startup
@@ -108,6 +109,7 @@ log_info "Phase 3: Registration and API smoke tests..."
 # Register admin user (role selected at registration)
 REG_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/register \
     -H "Content-Type: application/json" \
+    -H "X-App-Version: ${APP_VERSION}" \
     -d '{"username":"testadmin","email":"testadmin@test.local","password":"TestAdmin@2024!","display_name":"Test Administrator","role":"system_admin"}')
 
 if echo "$REG_RESP" | grep -q 'system_admin\|system admin'; then
@@ -119,6 +121,7 @@ fi
 # Login as the registered admin
 LOGIN_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/login \
     -H "Content-Type: application/json" \
+    -H "X-App-Version: ${APP_VERSION}" \
     -d '{"username":"testadmin","password":"TestAdmin@2024!"}')
 
 if echo "$LOGIN_RESP" | grep -q '"token"'; then
@@ -131,21 +134,21 @@ fi
 
 if [ -n "$TOKEN" ]; then
     # Test authenticated endpoint
-    if curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:${API_PORT}/api/auth/me | grep -q '"user_id"'; then
+    if curl -sf -H "Authorization: Bearer $TOKEN" -H "X-App-Version: ${APP_VERSION}" http://localhost:${API_PORT}/api/auth/me | grep -q '"user_id"'; then
         log_pass "GET /api/auth/me returns user data"
     else
         log_fail "GET /api/auth/me failed"
     fi
 
     # Test search (empty results expected — no seeded content)
-    if curl -sf -H "Authorization: Bearer $TOKEN" "http://localhost:${API_PORT}/api/search?q=test" | grep -q '"results"'; then
+    if curl -sf -H "Authorization: Bearer $TOKEN" -H "X-App-Version: ${APP_VERSION}" "http://localhost:${API_PORT}/api/search?q=test" | grep -q '"results"'; then
         log_pass "GET /api/search returns valid response"
     else
         log_fail "GET /api/search failed"
     fi
 
     # Test learning paths (empty expected — no seeded data)
-    PATHS_RESP=$(curl -sf -H "Authorization: Bearer $TOKEN" http://localhost:${API_PORT}/api/learning/paths)
+    PATHS_RESP=$(curl -sf -H "Authorization: Bearer $TOKEN" -H "X-App-Version: ${APP_VERSION}" http://localhost:${API_PORT}/api/learning/paths)
     if [ "$PATHS_RESP" = "null" ] || echo "$PATHS_RESP" | grep -q '\[\]'; then
         log_pass "GET /api/learning/paths returns empty (no seeded data)"
     else
@@ -155,6 +158,7 @@ if [ -n "$TOKEN" ]; then
     # Register a second user with learner role
     REG2_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/register \
         -H "Content-Type: application/json" \
+        -H "X-App-Version: ${APP_VERSION}" \
         -d '{"username":"testlearner","email":"learner@test.local","password":"Learner@2024!","display_name":"Test Learner","role":"learner"}')
 
     if echo "$REG2_RESP" | grep -q 'learner'; then
@@ -166,12 +170,14 @@ if [ -n "$TOKEN" ]; then
     # Login as learner and verify RBAC invisibility (404 not 403)
     LEARNER_RESP=$(curl -sf -X POST http://localhost:${API_PORT}/api/auth/login \
         -H "Content-Type: application/json" \
+        -H "X-App-Version: ${APP_VERSION}" \
         -d '{"username":"testlearner","password":"Learner@2024!"}')
     LEARNER_TOKEN=$(echo "$LEARNER_RESP" | grep -o '"token":"[^"]*"' | head -1 | cut -d'"' -f4)
 
     if [ -n "$LEARNER_TOKEN" ]; then
         HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $LEARNER_TOKEN" \
+            -H "X-App-Version: ${APP_VERSION}" \
             http://localhost:${API_PORT}/api/procurement/settlements)
         if [ "$HTTP_CODE" = "404" ]; then
             log_pass "RBAC: Learner gets 404 for /settlements (feature invisible)"
@@ -182,6 +188,7 @@ if [ -n "$TOKEN" ]; then
         # Learner should be able to access search
         HTTP_CODE2=$(curl -s -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer $LEARNER_TOKEN" \
+            -H "X-App-Version: ${APP_VERSION}" \
             "http://localhost:${API_PORT}/api/search?q=test")
         if [ "$HTTP_CODE2" = "200" ]; then
             log_pass "Learner can access /search (200)"
