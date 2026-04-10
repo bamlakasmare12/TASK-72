@@ -14,13 +14,13 @@ $UI_PORT = 3001
 
 Log-Info "Phase 1: Building and starting Docker containers..."
 docker compose down -v --remove-orphans 2>$null
-$buildResult = docker compose build --no-cache --progress=plain 2>&1
+$buildResult = docker compose --progress=plain build --no-cache 2>&1
 if ($LASTEXITCODE -eq 0) { Log-Pass "Docker build succeeded" }
 else { Log-Fail "Docker build failed"; Write-Host $buildResult; exit 1 }
 
 # Start containers (may exit non-zero due to health check race; we poll manually)
 docker compose up -d 2>$null
-Log-Info "Waiting for services to become healthy..."
+Log-Info "Waiting for backend to become healthy..."
 $healthy = $false
 for ($i = 1; $i -le 30; $i++) {
     try {
@@ -29,8 +29,20 @@ for ($i = 1; $i -le 30; $i++) {
     } catch {}
     Start-Sleep -Seconds 2
 }
-if ($healthy) { Log-Pass "All services are healthy" }
-else { Log-Fail "Services not healthy"; docker compose logs; docker compose down -v; exit 1 }
+if ($healthy) { Log-Pass "Backend is healthy" }
+else { Log-Fail "Backend not healthy"; docker compose logs; docker compose down -v; exit 1 }
+
+Log-Info "Waiting for frontend to become healthy..."
+$feHealthy = $false
+for ($i = 1; $i -le 30; $i++) {
+    try {
+        $null = Invoke-WebRequest -Uri "http://localhost:${UI_PORT}/" -TimeoutSec 3 -ErrorAction SilentlyContinue
+        $feHealthy = $true; break
+    } catch {}
+    Start-Sleep -Seconds 2
+}
+if ($feHealthy) { Log-Pass "Frontend is healthy" }
+else { Log-Fail "Frontend not healthy"; docker compose logs frontend; docker compose down -v; exit 1 }
 
 Log-Info "Phase 2: Verifying endpoints..."
 try { $h = Invoke-RestMethod -Uri "http://localhost:${API_PORT}/api/health"; if ($h.status -eq "ok") { Log-Pass "Backend health OK" } } catch { Log-Fail "Backend health failed" }

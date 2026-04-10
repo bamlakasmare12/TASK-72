@@ -26,7 +26,7 @@ log_info "Phase 1: Building and starting Docker containers..."
 
 docker compose down -v --remove-orphans 2>/dev/null || true
 
-if docker compose build --no-cache --progress=plain 2>&1; then
+if docker compose --progress=plain build --no-cache 2>&1; then
     log_pass "Docker build succeeded"
 else
     log_fail "Docker build failed"
@@ -37,7 +37,7 @@ fi
 docker compose up -d || true
 
 # Wait for backend to be healthy
-log_info "Waiting for services to become healthy..."
+log_info "Waiting for backend to become healthy..."
 RETRIES=30
 HEALTHY=0
 for i in $(seq 1 $RETRIES); do
@@ -49,10 +49,30 @@ for i in $(seq 1 $RETRIES); do
 done
 
 if [ "$HEALTHY" -eq 1 ]; then
-    log_pass "All services are healthy"
+    log_pass "Backend is healthy"
 else
-    log_fail "Services did not become healthy in time"
+    log_fail "Backend did not become healthy in time"
     docker compose logs
+    docker compose down -v
+    exit 1
+fi
+
+# Wait for frontend to be healthy
+log_info "Waiting for frontend to become healthy..."
+FE_HEALTHY=0
+for i in $(seq 1 $RETRIES); do
+    if curl -sf http://localhost:${UI_PORT}/ >/dev/null 2>&1; then
+        FE_HEALTHY=1
+        break
+    fi
+    sleep 2
+done
+
+if [ "$FE_HEALTHY" -eq 1 ]; then
+    log_pass "Frontend is healthy"
+else
+    log_fail "Frontend did not become healthy in time"
+    docker compose logs frontend
     docker compose down -v
     exit 1
 fi
