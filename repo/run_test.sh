@@ -213,7 +213,7 @@ if docker run --rm --network="$NETWORK_NAME" \
     -v "$SCRIPT_DIR:/src:ro" \
     golang:1.22-alpine sh -c "
         cp -r /src /app && cd /app &&
-        go work sync &&
+        if [ ! -f go.work ]; then go work init && go work use ./backend ./tests/backend; fi &&
         go test -v -tags=integration -count=1 -timeout=120s ./tests/e2e/backend/... 2>&1
     " ; then
     log_pass "Integration tests passed"
@@ -230,7 +230,7 @@ if docker run --rm \
     -v "$SCRIPT_DIR:/src:ro" \
     golang:1.22-alpine sh -c "
         cp -r /src /app && cd /app &&
-        go work sync &&
+        if [ ! -f go.work ]; then go work init && go work use ./backend ./tests/backend; fi &&
         go test -v -count=1 -timeout=120s ./tests/unit/backend/... ./tests/api/backend/... 2>&1
     " ; then
     log_pass "Backend unit and API tests passed"
@@ -244,9 +244,9 @@ fi
 log_info "Phase 6: Running frontend tests..."
 
 if docker run --rm \
-    -v "$SCRIPT_DIR/frontend:/src:ro" \
+    -v "$SCRIPT_DIR:/src:ro" \
     node:20-alpine sh -c "
-        cp -r /src /app && cd /app && npm install --legacy-peer-deps 2>&1 | tail -1 &&
+        cp -r /src /app && cd /app/frontend && npm install --legacy-peer-deps 2>&1 | tail -1 &&
         npx vitest run 2>&1
     " ; then
     log_pass "Frontend tests passed"
