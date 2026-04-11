@@ -50,36 +50,13 @@ try { $h = Invoke-RestMethod -Uri "http://localhost:${API_PORT}/api/health"; if 
 try { $f = Invoke-WebRequest -Uri "http://localhost:${UI_PORT}/"; if ($f.Content -match "WLPR Portal") { Log-Pass "Frontend OK" } } catch { Log-Fail "Frontend failed" }
 try { $c = Invoke-WebRequest -Uri "http://localhost:${UI_PORT}/config.js"; if ($c.Content -match "__WLPR_CONFIG__") { Log-Pass "config.js OK" } } catch { Log-Fail "config.js failed" }
 
-Log-Info "Phase 3: Registration and API smoke tests..."
-$versionHeaders = @{ "X-App-Version" = $APP_VERSION }
-try {
-    $reg = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/register" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testadmin","email":"ta@test.local","password":"TestAdmin@2024!","display_name":"Test Admin","role":"system_admin"}'
-    if ($reg.message) { Log-Pass "First user registered (auto-admin)" } else { Log-Fail "Registration failed" }
-} catch { Log-Fail "Registration error: $_" }
-
-try {
-    $login = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/login" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testadmin","password":"TestAdmin@2024!"}'
-    if ($login.token) {
-        Log-Pass "Admin login succeeded"
-        $headers = @{ "Authorization" = "Bearer $($login.token)"; "X-App-Version" = $APP_VERSION }
-        $me = Invoke-RestMethod -Uri "http://localhost:${API_PORT}/api/auth/me" -Headers $headers
-        if ($me.user_id) { Log-Pass "GET /api/auth/me OK" }
-
-        # Register second user with learner role
-        $reg2 = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/register" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testlearner","email":"tl@test.local","password":"Learner@2024!","display_name":"Test Learner","role":"learner"}'
-        if ($reg2.message -match "learner") { Log-Pass "Second user registered with learner role" }
-
-        # RBAC test
-        $ll = Invoke-RestMethod -Method Post -Uri "http://localhost:${API_PORT}/api/auth/login" -ContentType "application/json" -Headers $versionHeaders -Body '{"username":"testlearner","password":"Learner@2024!"}'
-        $lh = @{ "Authorization" = "Bearer $($ll.token)"; "X-App-Version" = $APP_VERSION }
-        try { Invoke-RestMethod -Uri "http://localhost:${API_PORT}/api/procurement/settlements" -Headers $lh; Log-Fail "Learner accessed settlements" }
-        catch { if ($_.Exception.Response.StatusCode.value__ -eq 404) { Log-Pass "RBAC: Learner gets 404 (feature invisible)" } else { Log-Fail "RBAC: Got $($_.Exception.Response.StatusCode.value__)" } }
-    }
-} catch { Log-Fail "Login/API test failed: $_" }
+Log-Info "Phase 3: Running API smoke tests..."
+$net = (docker network ls --format '{{.Name}}' | Select-String 'repo' | Select-Object -First 1).ToString().Trim()
+docker run --rm --network=$net -e "TEST_API_URL=http://backend:8080" -v "${scriptDir}:/src:ro" golang:1.22-alpine sh -c "cp -r /src /app && cd /app && if [ ! -f go.work ]; then go work init && go work use ./backend ./tests; fi && cd tests && go mod tidy && cd .. && go test -v -tags=integration -count=1 -timeout=60s ./tests/e2e/backend/smoke/... 2>&1"
+if ($LASTEXITCODE -eq 0) { Log-Pass "API smoke tests passed" } else { Log-Fail "API smoke tests failed" }
 
 Log-Info "Phase 4: Integration tests..."
-$net = (docker network ls --format '{{.Name}}' | Select-String 'repo' | Select-Object -First 1).ToString().Trim()
-docker run --rm --network=$net -e "TEST_DATABASE_URL=postgres://wlpr:wlpr_secret@db:5432/wlpr_portal?sslmode=disable" -v "${scriptDir}:/src:ro" golang:1.22-alpine sh -c "cp -r /src /app && cd /app && if [ ! -f go.work ]; then go work init && go work use ./backend ./tests; fi && cd tests && go mod tidy && cd .. && go test -v -tags=integration -count=1 -timeout=120s ./tests/e2e/backend/... 2>&1"
+docker run --rm --network=$net -e "TEST_DATABASE_URL=postgres://wlpr:wlpr_secret@db:5432/wlpr_portal?sslmode=disable" -v "${scriptDir}:/src:ro" golang:1.22-alpine sh -c "cp -r /src /app && cd /app && if [ ! -f go.work ]; then go work init && go work use ./backend ./tests; fi && cd tests && go mod tidy && cd .. && go test -v -tags=integration -count=1 -timeout=120s ./tests/e2e/backend/repository/... 2>&1"
 if ($LASTEXITCODE -eq 0) { Log-Pass "Integration tests passed" } else { Log-Fail "Integration tests failed" }
 
 Log-Info "Phase 5: Unit tests..."
